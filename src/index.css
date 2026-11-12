@@ -1,0 +1,19 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    @apply bg-slate-950 text-slate-100 antialiased font-sans;
+  }
+}
+
+.meme-heading {
+  font-family: 'Montserrat', 'Arial Black', sans-serif;
+  letter-spacing: -0.02em;
+}
+
+.telugu-text {
+  font-family: 'Ramabhadra', 'Noto Sans Telugu', sans-serif;
+}
+
