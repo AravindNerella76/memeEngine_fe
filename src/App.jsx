@@ -14,6 +14,7 @@ import {
   FileText
 } from 'lucide-react';
 import CreateMemeForm from './components/CreateMemeForm';
+import ViralAdaptationForm from './components/ViralAdaptationForm';
 import MemeResultView from './components/MemeResultView';
 import MyMemesGallery from './components/MyMemesGallery';
 
@@ -159,6 +160,7 @@ export default function App() {
             <button
               onClick={() => {
                 setActiveTab('create');
+                setCurrentMeme(null);
               }}
               className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-all ${
                 activeTab === 'create'
@@ -168,6 +170,21 @@ export default function App() {
             >
               <Wand2 className="w-4 h-4" />
               Create Meme
+            </button>
+
+            <button
+              onClick={() => {
+                setActiveTab('viral');
+                setCurrentMeme(null);
+              }}
+              className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-all ${
+                activeTab === 'viral'
+                  ? 'bg-amber-400 text-slate-950 shadow-md shadow-amber-400/20'
+                  : 'text-slate-400 hover:text-white hover:bg-slate-800/50'
+              }`}
+            >
+              <Sparkles className="w-4 h-4" />
+              Viral Adaptation
             </button>
 
             <button
@@ -214,12 +231,27 @@ export default function App() {
           </div>
         )}
 
-        {/* TAB 2: MY MEMES GALLERY */}
+        {/* TAB 2: VIRAL MEME ADAPTATION */}
+        {activeTab === 'viral' && (
+          <div>
+            {currentMeme ? (
+              <MemeResultView
+                meme={currentMeme}
+                onNewMeme={() => setCurrentMeme(null)}
+                onRegenerate={handleRegenerate}
+              />
+            ) : (
+              <ViralAdaptationForm onGenerated={handleGenerated} />
+            )}
+          </div>
+        )}
+
+        {/* TAB 3: MY MEMES GALLERY */}
         {activeTab === 'history' && (
           <MyMemesGallery onSelectMeme={handleSelectFromGallery} />
         )}
 
-        {/* TAB 3: REFERENCE STANDARDS */}
+        {/* TAB 4: REFERENCE STANDARDS */}
         {activeTab === 'reference' && (
           <div className="space-y-6">
             <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6">

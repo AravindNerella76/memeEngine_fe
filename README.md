@@ -28,3 +28,4 @@ npm run dev
 ```
 
 The frontend will be available at `http://localhost:5173`. Make sure the backend server (`memeEngine_be`) is running on `http://localhost:3000`.
+
