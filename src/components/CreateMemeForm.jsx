@@ -1,22 +1,92 @@
-import React, { useState } from 'react';
-import {
-  Wand2,
-  Upload,
-  Trash2,
-  MoveLeft,
-  MoveRight,
-  Plus,
-  X,
-  Type,
-  Palette,
-  Sliders,
-  Layers,
-  Sparkles,
-  AlertCircle
-} from 'lucide-react';
+import React, { useEffect, useRef, useState } from 'react';
+import { Link } from 'react-router-dom';
+import { ArrowLeft, ArrowRight, Check, Film, Plus, Sparkles, Trash2, Upload, Wand2, X } from 'lucide-react';
 import { SAMPLE_TEMPLATES } from './SampleTemplates';
+import { API_BASE, apiFetch } from '../api';
+import { ColorField, NumberField, Segmented, SelectField } from './settings/controls';
+import { Alert, Badge, Button, Card, Field, ImageDrop, Input, PageHeader, Textarea, cn, isImageFile, useDocumentTitle, useImageSlot, useToast } from '../ui';
+
+const MEME_TYPES = [
+  { id: 'facts_collage', title: 'Facts / Collage', desc: 'Grid arrangement with individual cell labels' },
+  { id: 'comparison', title: 'Comparison', desc: 'Side-by-side columns or stacked rows' },
+  { id: 'trending_news', title: 'Trending News', desc: 'Hero image + statement overlay' },
+  { id: 'movie_update', title: 'Movie Review / Censor', desc: 'Seamless poster collage + review bullet points' },
+  { id: 'custom', title: 'Custom Meme', desc: 'Dynamic split based on materials' }
+];
+
+/** Tiny sketch of each layout, so the choice is visual. */
+function LayoutGlyph({ type }) {
+  const bar = (x, y, w, h) => <rect x={x} y={y} width={w} height={h} rx="1.5" fill="rgb(var(--marker))" stroke="currentColor" strokeWidth="1.6" />;
+  const box = (x, y, w, h) => <rect x={x} y={y} width={w} height={h} rx="1.5" fill="none" stroke="currentColor" strokeWidth="1.6" />;
+  return (
+    <svg viewBox="0 0 40 50" className="h-[52px] w-10 shrink-0" aria-hidden="true">
+      {type === 'facts_collage' && (
+        <>
+          {bar(3, 3, 34, 6)}
+          {box(3, 12, 16, 12)}
+          {box(21, 12, 16, 12)}
+          {box(3, 26, 16, 12)}
+          {box(21, 26, 16, 12)}
+          {bar(3, 41, 34, 6)}
+        </>
+      )}
+      {type === 'comparison' && (
+        <>
+          {bar(3, 3, 34, 6)}
+          {box(3, 12, 10, 26)}
+          {box(15, 12, 10, 26)}
+          {box(27, 12, 10, 26)}
+          {bar(3, 41, 34, 6)}
+        </>
+      )}
+      {type === 'trending_news' && (
+        <>
+          {box(3, 3, 16, 22)}
+          {box(21, 3, 16, 22)}
+          {bar(3, 27, 34, 10)}
+          {bar(3, 41, 34, 6)}
+        </>
+      )}
+      {type === 'movie_update' && (
+        <>
+          {bar(3, 3, 34, 6)}
+          {box(3, 12, 16, 14)}
+          {box(21, 12, 16, 14)}
+          <path d="M5 30h30M5 34h24M5 38h28" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+          {bar(3, 41, 34, 6)}
+        </>
+      )}
+      {type === 'custom' && (
+        <>
+          <rect x="3" y="3" width="34" height="44" rx="2" fill="none" stroke="currentColor" strokeWidth="1.6" strokeDasharray="3 3" />
+          <path d="M20 15l2.4 6.2 6.2 2.4-6.2 2.4L20 32l-2.4-6-6.2-2.4 6.2-2.4z" fill="rgb(var(--marker))" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round" />
+        </>
+      )}
+    </svg>
+  );
+}
+
+function Step({ n, title, hint, children, done }) {
+  return (
+    <Card as="section">
+      <div className="mb-5 flex items-start gap-4">
+        <span className={cn('grid h-10 w-10 shrink-0 place-items-center rounded border-2 border-ink font-display text-[18px] font-extrabold', done ? 'bg-marker shadow-hard-sm' : 'bg-surface')} aria-hidden="true">
+          {done ? <Check className="h-5 w-5" strokeWidth={3} /> : n}
+        </span>
+        <div>
+          <h2 className="text-[18px] font-bold leading-snug">{title}</h2>
+          {hint && <p className="mt-1 max-w-prose text-[13px] leading-relaxed text-muted">{hint}</p>}
+        </div>
+      </div>
+      {children}
+    </Card>
+  );
+}
 
 export default function CreateMemeForm({ onGenerated }) {
+  useDocumentTitle('Create Meme');
+  const toast = useToast();
+
   // Meme Information
   const [topic, setTopic] = useState('');
   const [headline, setHeadline] = useState('');
@@ -27,7 +97,8 @@ export default function CreateMemeForm({ onGenerated }) {
 
   // Assets
   const [subjectFiles, setSubjectFiles] = useState([]); // [{ id, file, preview, label }]
-  const [reactionFile, setReactionFile] = useState(null); // { file, preview }
+  const [reactionFile, setReactionFile] = useImageSlot(); // { file, preview, name }
+  const [dropOver, setDropOver] = useState(false);
 
   // Meme Type
   const [memeType, setMemeType] = useState('facts_collage');
@@ -47,8 +118,49 @@ export default function CreateMemeForm({ onGenerated }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
-  // Quick Demo Template Loader
-  const handleLoadTemplate = async (template) => {
+  // Installed fonts and the saved Settings (the design fields below start from them)
+  const [fonts, setFonts] = useState({
+    english: ['Arial Black', 'Anton', 'Impact', 'Intrepid ExtraBold', 'Intrepid'],
+    telugu: ['Ramabhadra', 'Mandali', 'Noto Sans Telugu']
+  });
+  const [settingsLoaded, setSettingsLoaded] = useState(false);
+  useEffect(() => {
+    let alive = true;
+    apiFetch(`${API_BASE}/api/settings`)
+      .then(r => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
+      .then(j => {
+        if (!alive || !j?.settings) return;
+        const s = j.settings;
+        const heading = s.typography.roles.heading;
+        const punch = s.typography.roles.punchline;
+        const fx = s.effects.roles.punchline;
+        if (j.fonts) setFonts(j.fonts);
+        setFontFamily(heading.englishFont);
+        setTeluguFontFamily(punch.teluguFont);
+        setPrimaryTextColor(fx.highlight.color);
+        setSecondaryTextColor(fx.fill.color);
+        setOutlineColor(fx.stroke.color);
+        setOutlineThickness(fx.stroke.enabled ? fx.stroke.width : 0);
+        setShadowBlur(fx.shadow.blur);
+        setFontSizeScale(s.typography.fontSizeScale);
+        setCanvasPreset(s.canvas.aspect);
+        setSettingsLoaded(true);
+      })
+      .catch(() => {
+        /* older backend: keep the built-in defaults */
+      });
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  // free the browser's preview URLs when the page closes
+  const subjectsRef = useRef([]);
+  subjectsRef.current = subjectFiles;
+  useEffect(() => () => subjectsRef.current.forEach(s => URL.revokeObjectURL(s.preview)), []);
+
+  // Quick demo template loader
+  const handleLoadTemplate = async template => {
     setTopic(template.topic || '');
     setHeadline(template.headline || '');
     setStatement(template.statement || '');
@@ -57,7 +169,7 @@ export default function CreateMemeForm({ onGenerated }) {
     setPunchline(template.punchline || '');
     setMemeType(template.memeType);
 
-    // Fetch sample assets from backend and convert to File objects
+    // Fetch sample assets and convert to File objects
     try {
       setLoading(true);
       setError(null);
@@ -65,9 +177,7 @@ export default function CreateMemeForm({ onGenerated }) {
 
       for (let i = 0; i < template.sampleAssets.subjects.length; i++) {
         const assetName = template.sampleAssets.subjects[i];
-        const res = await fetch(`/output/${template.id === 'facts_collage' ? 'phase2-facts-collage.png' : 'phase1-reference-standard.png'}`);
-        // We can fetch from test-assets or public assets
-        const fileRes = await fetch(`/output/${template.id === 'facts_collage' ? 'phase2-facts-collage.png' : 'phase1-reference-standard.png'}`);
+        const fileRes = await fetch(`/samples/${template.id === 'facts_collage' ? 'phase2-facts-collage.png' : 'phase1-reference-standard.png'}`);
         const blob = await fileRes.blob();
         const file = new File([blob], assetName, { type: 'image/jpeg' });
         newSubjectFiles.push({
@@ -77,15 +187,18 @@ export default function CreateMemeForm({ onGenerated }) {
           label: template.labels[i] || ''
         });
       }
+      subjectFiles.forEach(s => URL.revokeObjectURL(s.preview));
       setSubjectFiles(newSubjectFiles);
 
       // Reaction
-      const rxRes = await fetch(`/output/phase1-reference-standard.png`);
+      const rxRes = await fetch(`/samples/phase1-reference-standard.png`);
       const rxBlob = await rxRes.blob();
       setReactionFile({
         file: new File([rxBlob], template.sampleAssets.reaction, { type: 'image/jpeg' }),
-        preview: URL.createObjectURL(rxBlob)
+        preview: URL.createObjectURL(rxBlob),
+        name: template.sampleAssets.reaction
       });
+      toast.success(`Loaded the “${template.name}” sample.`);
     } catch (err) {
       console.warn('Template asset notice:', err);
     } finally {
@@ -93,23 +206,23 @@ export default function CreateMemeForm({ onGenerated }) {
     }
   };
 
-  // Multiple Subject Images Upload
-  const handleSubjectUpload = (e) => {
-    const files = Array.from(e.target.files);
-    if (!files.length) return;
+  // Multiple subject images (picked or dropped)
+  const addSubjects = fileList => {
+    const files = Array.from(fileList || []);
+    const images = files.filter(isImageFile);
+    if (files.length && images.length < files.length) toast.error('Some files were skipped because they are not images.');
+    if (!images.length) return;
 
-    const newItems = files.map((file, idx) => ({
+    const newItems = images.map((file, idx) => ({
       id: `${Date.now()}-${idx}-${Math.random()}`,
       file,
       preview: URL.createObjectURL(file),
       label: ''
     }));
-
     setSubjectFiles(prev => [...prev, ...newItems]);
-    e.target.value = null;
   };
 
-  // Reorder Subject Image
+  // Reorder subject image
   const moveSubject = (index, direction) => {
     const targetIdx = index + direction;
     if (targetIdx < 0 || targetIdx >= subjectFiles.length) return;
@@ -120,12 +233,13 @@ export default function CreateMemeForm({ onGenerated }) {
     setSubjectFiles(updated);
   };
 
-  // Remove Subject Image
-  const removeSubject = (index) => {
+  // Remove subject image
+  const removeSubject = index => {
+    URL.revokeObjectURL(subjectFiles[index]?.preview);
     setSubjectFiles(prev => prev.filter((_, i) => i !== index));
   };
 
-  // Update Subject Label
+  // Update subject label
   const updateSubjectLabel = (index, label) => {
     setSubjectFiles(prev => {
       const copy = [...prev];
@@ -134,22 +248,8 @@ export default function CreateMemeForm({ onGenerated }) {
     });
   };
 
-  // Reaction Image Upload
-  const handleReactionUpload = (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-    setReactionFile({
-      file,
-      preview: URL.createObjectURL(file)
-    });
-    e.target.value = null;
-  };
-
-  // Add Bullet Point
-  const addBulletPoint = () => {
-    setBulletPoints(prev => [...prev, '']);
-  };
-
+  // Bullet points
+  const addBulletPoint = () => setBulletPoints(prev => [...prev, '']);
   const updateBulletPoint = (index, text) => {
     setBulletPoints(prev => {
       const copy = [...prev];
@@ -157,12 +257,9 @@ export default function CreateMemeForm({ onGenerated }) {
       return copy;
     });
   };
+  const removeBulletPoint = index => setBulletPoints(prev => prev.filter((_, i) => i !== index));
 
-  const removeBulletPoint = (index) => {
-    setBulletPoints(prev => prev.filter((_, i) => i !== index));
-  };
-
-  // Submit & Generate Meme
+  // Submit & generate meme
   const handleGenerate = async () => {
     setError(null);
 
@@ -189,12 +286,12 @@ export default function CreateMemeForm({ onGenerated }) {
 
       const formData = new FormData();
 
-      // Append Subject Images
-      subjectFiles.forEach((item) => {
+      // Append subject images
+      subjectFiles.forEach(item => {
         formData.append('subjectImages', item.file);
       });
 
-      // Append Reaction Image
+      // Append reaction image
       if (reactionFile && reactionFile.file) {
         formData.append('reactionImage', reactionFile.file);
       }
@@ -229,7 +326,7 @@ export default function CreateMemeForm({ onGenerated }) {
 
       formData.append('payload', JSON.stringify(payload));
 
-      const res = await fetch('http://localhost:3000/api/memes/upload-and-generate', {
+      const res = await apiFetch(`${API_BASE}/api/memes/upload-and-generate`, {
         method: 'POST',
         body: formData
       });
@@ -249,494 +346,289 @@ export default function CreateMemeForm({ onGenerated }) {
     }
   };
 
+  const errorRef = useRef(null);
+  useEffect(() => {
+    if (error && errorRef.current) errorRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }, [error]);
+
+  const textDone = Boolean((topic || headline || statement) && punchline);
+
   return (
-    <div className="space-y-8 max-w-5xl mx-auto pb-12">
-      {/* Quick Demo Template Chips */}
-      <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5">
-        <div className="flex items-center gap-2 mb-3">
-          <Sparkles className="w-4 h-4 text-amber-400" />
-          <h3 className="text-xs font-bold text-slate-300 uppercase tracking-wider">
-            Quick Presets (1-Click Test All 5 Samples)
-          </h3>
-        </div>
+    <div className="pb-4">
+      <PageHeader
+        eyebrow="Studio · manual"
+        title="Create a meme"
+        description="Build a meme yourself from your own pictures and words. Would you rather the engine find the pictures? Use Viral Adaptation."
+        actions={
+          <Button as={Link} to="/" variant="secondary" rightIcon={<ArrowRight className="h-4 w-4" />}>
+            Viral Adaptation
+          </Button>
+        }
+      />
+
+      {/* Samples */}
+      <div className="mb-6 flex flex-wrap items-center gap-x-4 gap-y-2.5 rounded-lg border border-dashed border-line-strong bg-surface/60 px-4 py-3">
+        <span className="inline-flex items-center gap-2 text-[13px] font-semibold">
+          <Sparkles className="h-4 w-4" aria-hidden="true" /> Try a sample layout
+        </span>
         <div className="flex flex-wrap gap-2">
-          {SAMPLE_TEMPLATES.map((tmpl) => (
+          {SAMPLE_TEMPLATES.map(tmpl => (
             <button
               key={tmpl.id}
               type="button"
+              disabled={loading}
               onClick={() => handleLoadTemplate(tmpl)}
-              className="px-3 py-1.5 bg-slate-800 hover:bg-amber-400 hover:text-slate-950 text-slate-300 rounded-lg text-xs font-semibold border border-slate-700 transition-all flex items-center gap-1.5"
+              className="inline-flex h-9 items-center gap-2 rounded-full border border-line-strong bg-surface px-3.5 text-[13px] font-semibold transition-all hover:border-ink hover:bg-marker-soft disabled:cursor-not-allowed disabled:opacity-50"
             >
-              <span>{tmpl.name}</span>
-              <span className="text-[10px] opacity-70">({tmpl.badge})</span>
+              {tmpl.name}
+              <span className="text-[11px] font-normal text-muted">{tmpl.badge}</span>
             </button>
           ))}
         </div>
       </div>
 
       {error && (
-        <div className="p-4 bg-rose-500/10 border border-rose-500/30 rounded-xl flex items-center gap-3 text-rose-300 text-sm">
-          <AlertCircle className="w-5 h-5 flex-shrink-0 text-rose-400" />
-          <span>{error}</span>
+        <div ref={errorRef} className="mb-6">
+          <Alert tone="bad" className="animate-slide-in">
+            {error}
+          </Alert>
         </div>
       )}
 
-      {/* 1. Meme Information */}
-      <section className="bg-slate-900 border border-slate-800 rounded-2xl p-6 space-y-4">
-        <h3 className="text-base font-bold text-white flex items-center gap-2">
-          <Type className="w-5 h-5 text-amber-400" />
-          1. Meme Information & Texts
-        </h3>
-
-        <div className="grid md:grid-cols-2 gap-4">
-          <div>
-            <label className="block text-xs font-semibold text-slate-400 mb-1">
-              Subject / Topic <span className="text-rose-400">*</span>
-            </label>
-            <input
-              type="text"
-              value={topic}
-              onChange={(e) => setTopic(e.target.value)}
-              placeholder="e.g. Lord Vishnu Facts / Net Worth Comparison"
-              className="w-full bg-slate-950 border border-slate-800 focus:border-amber-400 rounded-xl px-4 py-2.5 text-sm text-white outline-none"
-            />
-          </div>
-
-          <div>
-            <label className="block text-xs font-semibold text-slate-400 mb-1">
-              Top Headline Banner (Optional)
-            </label>
-            <input
-              type="text"
-              value={headline}
-              onChange={(e) => setHeadline(e.target.value)}
-              placeholder="e.g. OG CENSOR REPORT"
-              className="w-full bg-slate-950 border border-slate-800 focus:border-amber-400 rounded-xl px-4 py-2.5 text-sm text-white outline-none font-semibold"
-            />
-          </div>
-        </div>
-
-        <div>
-          <label className="block text-xs font-semibold text-slate-400 mb-1">
-            Statement / News Quote (For Trending News memes)
-          </label>
-          <textarea
-            rows={2}
-            value={statement}
-            onChange={(e) => setStatement(e.target.value)}
-            placeholder="e.g. CHIRANJEEVI GAVE UP REMUNERATION FOR BHOLA SHANKAR... - PRODUCER ANIL SUNKARA"
-            className="w-full bg-slate-950 border border-slate-800 focus:border-amber-400 rounded-xl px-4 py-2.5 text-sm text-white outline-none"
-          />
-        </div>
-
-        {/* Dynamic Bullet Points */}
-        <div>
-          <div className="flex items-center justify-between mb-2">
-            <label className="text-xs font-semibold text-slate-400">
-              Review Bullet Points (For Movie Updates)
-            </label>
-            <button
-              type="button"
-              onClick={addBulletPoint}
-              className="text-xs text-amber-400 hover:text-amber-300 font-semibold flex items-center gap-1"
-            >
-              <Plus className="w-3.5 h-3.5" /> Add Point
-            </button>
-          </div>
-          {bulletPoints.map((pt, idx) => (
-            <div key={idx} className="flex items-center gap-2 mb-2">
-              <span className="text-xs text-amber-400 font-mono w-4">{idx + 1}.</span>
-              <input
-                type="text"
-                value={pt}
-                onChange={(e) => updateBulletPoint(idx, e.target.value)}
-                placeholder={`Point ${idx + 1} (e.g. DECENT 1ST HALF)`}
-                className="flex-1 bg-slate-950 border border-slate-800 focus:border-amber-400 rounded-xl px-3 py-1.5 text-sm text-white outline-none"
-              />
-              <button
-                type="button"
-                onClick={() => removeBulletPoint(idx)}
-                className="text-slate-500 hover:text-rose-400 p-1"
-              >
-                <X className="w-4 h-4" />
-              </button>
+      <div className="space-y-5">
+        {/* 1. Text */}
+        <Step n={1} title="Words" hint="What the meme says. A topic, headline or statement is needed, plus a punchline." done={textDone}>
+          <div className="space-y-5">
+            <div className="grid gap-5 md:grid-cols-2">
+              <Field label="Subject / topic" hint="Required unless you give a headline or statement.">
+                {({ id }) => <Input id={id} value={topic} onChange={e => setTopic(e.target.value)} placeholder="e.g. Lord Vishnu facts / net worth comparison" />}
+              </Field>
+              <Field label="Top headline banner" optional hint="Shown in the yellow header bar.">
+                {({ id }) => <Input id={id} value={headline} onChange={e => setHeadline(e.target.value)} placeholder="e.g. OG CENSOR REPORT" className="font-semibold" />}
+              </Field>
             </div>
-          ))}
-        </div>
 
-        <div className="grid md:grid-cols-2 gap-4 pt-2">
-          <div>
-            <label className="block text-xs font-semibold text-amber-300 mb-1">
-              Reaction Context Tag (Optional)
-            </label>
-            <input
-              type="text"
-              value={reactionContext}
-              onChange={(e) => setReactionContext(e.target.value)}
-              placeholder="e.g. * BOSS AND AKHIL or * THEATRE AUDIENCE"
-              className="w-full bg-slate-950 border border-slate-800 focus:border-amber-400 rounded-xl px-4 py-2.5 text-sm text-white outline-none"
-            />
+            <Field label="Statement / news quote" optional hint="For Trending News memes.">
+              {({ id }) => (
+                <Textarea id={id} rows={2} value={statement} onChange={e => setStatement(e.target.value)} placeholder="e.g. CHIRANJEEVI GAVE UP REMUNERATION FOR BHOLA SHANKAR… - PRODUCER ANIL SUNKARA" />
+              )}
+            </Field>
+
+            {/* Dynamic bullet points */}
+            <div>
+              <div className="mb-2 flex items-center justify-between">
+                <span className="text-[13px] font-semibold">
+                  Review bullet points <span className="ml-1 font-normal text-muted">optional · for movie updates</span>
+                </span>
+                <Button variant="ghost" size="sm" onClick={addBulletPoint} leftIcon={<Plus className="h-3.5 w-3.5" />}>
+                  Add point
+                </Button>
+              </div>
+              <div className="space-y-2">
+                {bulletPoints.map((pt, idx) => (
+                  <div key={idx} className="flex items-center gap-2">
+                    <span className="w-5 text-right font-mono text-[12px] font-semibold text-muted">{idx + 1}</span>
+                    <Input value={pt} onChange={e => updateBulletPoint(idx, e.target.value)} placeholder={`Point ${idx + 1} (e.g. DECENT 1ST HALF)`} aria-label={`Bullet point ${idx + 1}`} className="!py-2" />
+                    <Button variant="ghost" size="icon-sm" onClick={() => removeBulletPoint(idx)} aria-label={`Remove point ${idx + 1}`}>
+                      <X className="h-4 w-4" />
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="grid gap-5 md:grid-cols-2">
+              <Field label="Reaction tag" optional hint="A short caption on the reaction panel.">
+                {({ id }) => <Input id={id} value={reactionContext} onChange={e => setReactionContext(e.target.value)} placeholder="e.g. * BOSS AND AKHIL or * THEATRE AUDIENCE" />}
+              </Field>
+              <Field label="Punchline" hint="Telugu or English. Used exactly as typed.">
+                {({ id }) => <Input id={id} value={punchline} onChange={e => setPunchline(e.target.value)} placeholder="e.g. చిన్న పాజిటివ్ టాక్ వచ్చినా 500 CR కొట్టే దాకా ఆగదు!" className="telugu-input font-semibold" />}
+              </Field>
+            </div>
           </div>
+        </Step>
 
-          <div>
-            <label className="block text-xs font-semibold text-amber-300 mb-1">
-              Telugu Punchline <span className="text-rose-400">*</span>
-            </label>
-            <input
-              type="text"
-              value={punchline}
-              onChange={(e) => setPunchline(e.target.value)}
-              placeholder="e.g. చిన్న పాజిటివ్ టాక్ వచ్చినా 500 CR కొట్టే దాకా ఆగదు!"
-              className="w-full bg-slate-950 border border-slate-800 focus:border-amber-400 rounded-xl px-4 py-2.5 text-sm text-white outline-none font-semibold"
-            />
-          </div>
-        </div>
-      </section>
-
-      {/* 2. Subject Images Dropzone */}
-      <section className="bg-slate-900 border border-slate-800 rounded-2xl p-6 space-y-4">
-        <div className="flex items-center justify-between">
-          <div>
-            <h3 className="text-base font-bold text-white flex items-center gap-2">
-              <Upload className="w-5 h-5 text-amber-400" />
-              2. Subject Images ({subjectFiles.length})
-            </h3>
-            <p className="text-xs text-slate-400 mt-0.5">
-              Typically 3:4 or 2:3 portrait photos. Re-order and set captions. The engine uses intelligent face anchoring (upper 28%) with 0% distortion.
-            </p>
-          </div>
-
-          <label className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-amber-300 text-xs font-bold rounded-xl cursor-pointer border border-slate-700 flex items-center gap-2">
-            <Plus className="w-4 h-4" />
-            Upload Images
+        {/* 2. Subject images */}
+        <Step
+          n={2}
+          title={`Subject images${subjectFiles.length ? ` (${subjectFiles.length})` : ''}`}
+          hint="Usually 3:4 or 2:3 portraits. Re-order them, and add a caption for each tile. Faces are kept in view when cropping, and nothing is stretched."
+          done={subjectFiles.length > 0}
+        >
+          <label
+            onDragEnter={e => {
+              e.preventDefault();
+              setDropOver(true);
+            }}
+            onDragOver={e => e.preventDefault()}
+            onDragLeave={() => setDropOver(false)}
+            onDrop={e => {
+              e.preventDefault();
+              setDropOver(false);
+              addSubjects(e.dataTransfer.files);
+            }}
+            className={cn(
+              'group flex cursor-pointer flex-col items-center gap-3 rounded-lg border-2 border-dashed px-6 py-8 text-center transition-all focus-within:ring-[3px] focus-within:ring-marker',
+              dropOver ? 'scale-[1.01] border-ink bg-marker-soft' : 'border-line-strong bg-paper/50 hover:border-ink hover:bg-marker-soft/50'
+            )}
+          >
             <input
               type="file"
               multiple
               accept="image/*"
-              onChange={handleSubjectUpload}
-              className="hidden"
+              className="sr-only"
+              onChange={e => {
+                addSubjects(e.target.files);
+                e.target.value = '';
+              }}
             />
+            <span className="grid h-12 w-12 place-items-center rounded-md border-2 border-ink bg-marker shadow-hard-sm transition-transform group-hover:-rotate-3" aria-hidden="true">
+              <Upload className="h-5 w-5" />
+            </span>
+            <span>
+              <span className="block text-[15px] font-semibold">{dropOver ? 'Drop them here' : subjectFiles.length ? 'Add more pictures' : 'Drop pictures here, or browse'}</span>
+              <span className="mt-0.5 block text-[13px] text-muted">Select 1 to 4 or more photos: characters, movie scenes, collage items.</span>
+            </span>
           </label>
-        </div>
 
-        {subjectFiles.length === 0 ? (
-          <div className="border-2 border-dashed border-slate-800 rounded-2xl p-8 text-center bg-slate-950/40">
-            <Upload className="w-10 h-10 text-slate-600 mx-auto mb-2" />
-            <p className="text-sm font-semibold text-slate-300 mb-1">No subject images uploaded yet</p>
-            <p className="text-xs text-slate-500">
-              Select 1 to 4+ photos (characters, movie scenes, politicians, or collage items)
-            </p>
-          </div>
-        ) : (
-          <div className="grid sm:grid-cols-2 md:grid-cols-4 gap-4">
-            {subjectFiles.map((item, idx) => (
-              <div
-                key={item.id}
-                className="bg-slate-950 border border-slate-800 rounded-xl overflow-hidden flex flex-col"
-              >
-                <div className="relative aspect-square bg-black flex items-center justify-center overflow-hidden">
-                  <img
-                    src={item.preview}
-                    alt={`Subject ${idx + 1}`}
-                    className="w-full h-full object-cover"
-                  />
-                  <span className="absolute top-2 left-2 bg-slate-900/90 text-amber-300 text-[10px] font-mono px-2 py-0.5 rounded font-bold border border-slate-700">
-                    Slot {idx + 1}
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => removeSubject(idx)}
-                    className="absolute top-2 right-2 p-1.5 bg-rose-500/80 hover:bg-rose-500 text-white rounded-lg transition-all"
-                  >
-                    <Trash2 className="w-3.5 h-3.5" />
-                  </button>
-                </div>
-
-                <div className="p-2.5 flex-1 flex flex-col justify-between gap-2">
-                  <input
-                    type="text"
-                    value={item.label}
-                    onChange={(e) => updateSubjectLabel(idx, e.target.value)}
-                    placeholder="Tile Caption / Stat (e.g. 7 GATES OF VAIKUNTAM)"
-                    className="w-full bg-slate-900 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-white placeholder-slate-500 outline-none focus:border-amber-400"
-                  />
-
-                  <div className="flex items-center justify-between text-xs text-slate-500 pt-1 border-t border-slate-800/80">
-                    <span className="text-[11px] font-mono">Order: {idx + 1}</span>
-                    <div className="flex items-center gap-1">
-                      <button
-                        type="button"
-                        disabled={idx === 0}
-                        onClick={() => moveSubject(idx, -1)}
-                        className="p-1 hover:text-white disabled:opacity-30"
-                      >
-                        <MoveLeft className="w-3.5 h-3.5" />
-                      </button>
-                      <button
-                        type="button"
-                        disabled={idx === subjectFiles.length - 1}
-                        onClick={() => moveSubject(idx, 1)}
-                        className="p-1 hover:text-white disabled:opacity-30"
-                      >
-                        <MoveRight className="w-3.5 h-3.5" />
-                      </button>
+          {subjectFiles.length > 0 && (
+            <ul className="mt-5 grid gap-4 sm:grid-cols-2 md:grid-cols-4">
+              {subjectFiles.map((item, idx) => (
+                <li key={item.id} className="flex animate-pop flex-col overflow-hidden rounded-lg border border-line-strong bg-surface">
+                  <div className="relative aspect-square bg-ink">
+                    <img src={item.preview} alt={`Subject ${idx + 1}`} className="h-full w-full object-cover" />
+                    <Badge tone="ink" mono size="sm" className="absolute left-2 top-2">
+                      Slot {idx + 1}
+                    </Badge>
+                    <button
+                      type="button"
+                      onClick={() => removeSubject(idx)}
+                      aria-label={`Remove subject ${idx + 1}`}
+                      className="absolute right-2 top-2 grid h-8 w-8 place-items-center rounded bg-surface/95 text-bad shadow transition-colors hover:bg-bad hover:text-white"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  </div>
+                  <div className="space-y-2.5 p-3">
+                    <Input
+                      value={item.label}
+                      onChange={e => updateSubjectLabel(idx, e.target.value)}
+                      placeholder="Caption (e.g. 7 GATES OF VAIKUNTAM)"
+                      aria-label={`Caption for subject ${idx + 1}`}
+                      className="!py-2 !text-[13px]"
+                    />
+                    <div className="flex items-center justify-between border-t border-line pt-2">
+                      <span className="font-mono text-[11.5px] text-muted">Order {idx + 1}</span>
+                      <span className="flex gap-1">
+                        <Button variant="ghost" size="icon-sm" disabled={idx === 0} onClick={() => moveSubject(idx, -1)} aria-label="Move earlier">
+                          <ArrowLeft className="h-3.5 w-3.5" />
+                        </Button>
+                        <Button variant="ghost" size="icon-sm" disabled={idx === subjectFiles.length - 1} onClick={() => moveSubject(idx, 1)} aria-label="Move later">
+                          <ArrowRight className="h-3.5 w-3.5" />
+                        </Button>
+                      </span>
                     </div>
                   </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </section>
-
-      {/* 3. Reaction Image */}
-      <section className="bg-slate-900 border border-slate-800 rounded-2xl p-6 space-y-4">
-        <div>
-          <h3 className="text-base font-bold text-white flex items-center gap-2">
-            <Sparkles className="w-5 h-5 text-amber-400" />
-            3. Reaction / Punchline Movie Scene
-          </h3>
-          <p className="text-xs text-slate-400 mt-0.5">
-            Typically 16:9 cinematic widescreen movie scenes. The engine dynamically sets height and anchors actor eyelines (upper 36%).
-          </p>
-        </div>
-
-        {reactionFile ? (
-          <div className="flex items-center gap-4 bg-slate-950 border border-slate-800 rounded-xl p-3">
-            <div className="w-24 h-24 rounded-lg overflow-hidden bg-black flex-shrink-0">
-              <img
-                src={reactionFile.preview}
-                alt="Reaction Preview"
-                className="w-full h-full object-cover"
-              />
-            </div>
-            <div className="flex-1">
-              <p className="text-xs font-semibold text-white mb-1">
-                {reactionFile.file?.name || 'Reaction Scene Loaded'}
-              </p>
-              <p className="text-[11px] text-emerald-400 mb-2">Ready for bottom punchline section</p>
-              <label className="text-xs text-amber-400 hover:text-amber-300 font-bold cursor-pointer">
-                Replace Image
-                <input
-                  type="file"
-                  accept="image/*"
-                  onChange={handleReactionUpload}
-                  className="hidden"
-                />
-              </label>
-            </div>
-          </div>
-        ) : (
-          <label className="border-2 border-dashed border-slate-800 rounded-xl p-6 flex flex-col items-center justify-center cursor-pointer bg-slate-950/40 hover:border-slate-700 transition-all">
-            <Upload className="w-8 h-8 text-slate-600 mb-2" />
-            <p className="text-xs font-semibold text-slate-300">Upload Reaction Image</p>
-            <p className="text-[11px] text-slate-500 mt-0.5">
-              Telugu reaction image (e.g. Rao Ramesh, Suriya, Sunil, Srikanth, Brahmanandam)
-            </p>
-            <input
-              type="file"
-              accept="image/*"
-              onChange={handleReactionUpload}
-              className="hidden"
-            />
-          </label>
-        )}
-      </section>
-
-      {/* 4. Meme Type */}
-      <section className="bg-slate-900 border border-slate-800 rounded-2xl p-6 space-y-4">
-        <h3 className="text-base font-bold text-white flex items-center gap-2">
-          <Layers className="w-5 h-5 text-amber-400" />
-          4. Meme Type & Layout Rules
-        </h3>
-
-        <div className="grid md:grid-cols-5 gap-3">
-          {[
-            { id: 'facts_collage', title: 'Facts / Collage', desc: 'Grid arrangement with individual cell labels' },
-            { id: 'comparison', title: 'Comparison', desc: 'Side-by-side columns or stacked rows' },
-            { id: 'trending_news', title: 'Trending News', desc: 'Hero image + statement overlay' },
-            { id: 'movie_update', title: 'Movie Review / Censor', desc: 'Seamless poster collage + review bullet points' },
-            { id: 'custom', title: 'Custom Meme', desc: 'Dynamic split based on materials' }
-          ].map((type) => (
-            <button
-              key={type.id}
-              type="button"
-              onClick={() => setMemeType(type.id)}
-              className={`p-3.5 rounded-xl border text-left transition-all ${
-                memeType === type.id
-                  ? 'bg-slate-800 border-amber-400 ring-1 ring-amber-400/50 shadow-lg shadow-amber-400/10'
-                  : 'bg-slate-950 border-slate-800 hover:border-slate-700 text-slate-400'
-              }`}
-            >
-              <p className="text-xs font-bold text-white mb-1">{type.title}</p>
-              <p className="text-[10px] text-slate-400 leading-tight">{type.desc}</p>
-            </button>
-          ))}
-        </div>
-      </section>
-
-      {/* 5. Design Specifications */}
-      <section className="bg-slate-900 border border-slate-800 rounded-2xl p-6 space-y-4">
-        <h3 className="text-base font-bold text-white flex items-center gap-2">
-          <Palette className="w-5 h-5 text-amber-400" />
-          5. Design Specifications
-        </h3>
-
-        <div className="grid sm:grid-cols-2 md:grid-cols-4 gap-4">
-          <div>
-            <label className="block text-xs font-semibold text-slate-400 mb-1">English Font</label>
-            <select
-              value={fontFamily}
-              onChange={(e) => setFontFamily(e.target.value)}
-              className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white outline-none focus:border-amber-400"
-            >
-              <option value="Arial Black">Arial Black (Bold Meme)</option>
-              <option value="Intrepid ExtraBold">Intrepid ExtraBold (Classic Meme)</option>
-              <option value="Anton">Anton (Clean Impact)</option>
-              <option value="Impact">Impact (Classic)</option>
-              <option value="Montserrat">Montserrat (Modern)</option>
-            </select>
-          </div>
-
-          <div>
-            <label className="block text-xs font-semibold text-slate-400 mb-1">Telugu Font</label>
-            <select
-              value={teluguFontFamily}
-              onChange={(e) => setTeluguFontFamily(e.target.value)}
-              className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white outline-none focus:border-amber-400"
-            >
-              <option value="Ramabhadra">Ramabhadra (Bold Display)</option>
-              <option value="Mandali">Mandali (Rounded Clean)</option>
-              <option value="Noto Sans Telugu">Noto Sans Telugu</option>
-            </select>
-          </div>
-
-          <div>
-            <label className="block text-xs font-semibold text-slate-400 mb-1">Primary Color (Highlights)</label>
-            <div className="flex items-center gap-2">
-              <input
-                type="color"
-                value={primaryTextColor}
-                onChange={(e) => setPrimaryTextColor(e.target.value)}
-                className="w-8 h-8 rounded border border-slate-800 cursor-pointer bg-transparent"
-              />
-              <input
-                type="text"
-                value={primaryTextColor}
-                onChange={(e) => setPrimaryTextColor(e.target.value)}
-                className="w-full bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-white font-mono"
-              />
-            </div>
-          </div>
-
-          <div>
-            <label className="block text-xs font-semibold text-slate-400 mb-1">Secondary Color (Text)</label>
-            <div className="flex items-center gap-2">
-              <input
-                type="color"
-                value={secondaryTextColor}
-                onChange={(e) => setSecondaryTextColor(e.target.value)}
-                className="w-8 h-8 rounded border border-slate-800 cursor-pointer bg-transparent"
-              />
-              <input
-                type="text"
-                value={secondaryTextColor}
-                onChange={(e) => setSecondaryTextColor(e.target.value)}
-                className="w-full bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-white font-mono"
-              />
-            </div>
-          </div>
-        </div>
-
-        <div className="grid sm:grid-cols-2 md:grid-cols-3 gap-4 pt-2">
-          <div>
-            <div className="flex justify-between text-xs text-slate-400 mb-1 font-semibold">
-              <span>Outline Thickness</span>
-              <span className="text-amber-300 font-mono">{outlineThickness}px</span>
-            </div>
-            <input
-              type="range"
-              min="4"
-              max="12"
-              value={outlineThickness}
-              onChange={(e) => setOutlineThickness(Number(e.target.value))}
-              className="w-full accent-amber-400"
-            />
-          </div>
-
-          <div>
-            <div className="flex justify-between text-xs text-slate-400 mb-1 font-semibold">
-              <span>Font Size Scale</span>
-              <span className="text-amber-300 font-mono">{fontSizeScale}x</span>
-            </div>
-            <input
-              type="range"
-              min="0.8"
-              max="1.3"
-              step="0.05"
-              value={fontSizeScale}
-              onChange={(e) => setFontSizeScale(Number(e.target.value))}
-              className="w-full accent-amber-400"
-            />
-          </div>
-
-          <div>
-            <label className="block text-xs font-semibold text-slate-400 mb-1">Canvas Size</label>
-            <div className="flex gap-2">
-              <button
-                type="button"
-                onClick={() => setCanvasPreset('portrait_4_5')}
-                className={`flex-1 py-1.5 px-2 rounded-lg text-xs font-semibold border ${
-                  canvasPreset === 'portrait_4_5'
-                    ? 'bg-amber-400 text-slate-950 border-amber-400'
-                    : 'bg-slate-950 text-slate-400 border-slate-800'
-                }`}
-              >
-                1080 × 1350 (4:5)
-              </button>
-              <button
-                type="button"
-                onClick={() => setCanvasPreset('square_1_1')}
-                className={`flex-1 py-1.5 px-2 rounded-lg text-xs font-semibold border ${
-                  canvasPreset === 'square_1_1'
-                    ? 'bg-amber-400 text-slate-950 border-amber-400'
-                    : 'bg-slate-950 text-slate-400 border-slate-800'
-                }`}
-              >
-                1080 × 1080 (1:1)
-              </button>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* Generate Button Bar */}
-      <div className="sticky bottom-6 z-40 bg-slate-900/95 backdrop-blur border border-slate-800 p-4 rounded-2xl flex items-center justify-between shadow-2xl">
-        <div className="text-xs text-slate-400">
-          <span className="text-white font-semibold">{subjectFiles.length} Subject Images</span> +{' '}
-          <span className="text-white font-semibold">{reactionFile ? '1' : '0'} Reaction Image</span>
-        </div>
-
-        <button
-          type="button"
-          disabled={loading}
-          onClick={handleGenerate}
-          className="flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-amber-400 to-yellow-400 hover:from-amber-300 hover:to-yellow-300 text-slate-950 font-extrabold text-sm rounded-xl shadow-lg shadow-amber-400/20 transition-all disabled:opacity-50"
-        >
-          {loading ? (
-            <>
-              <div className="w-4 h-4 border-2 border-slate-950 border-t-transparent rounded-full animate-spin" />
-              <span>Generating Automated Meme...</span>
-            </>
-          ) : (
-            <>
-              <Wand2 className="w-4 h-4" />
-              <span>Generate Meme</span>
-            </>
+                </li>
+              ))}
+            </ul>
           )}
-        </button>
+        </Step>
+
+        {/* 3. Reaction image */}
+        <Step n={3} title="Reaction scene" hint="Usually a 16:9 cinematic scene. The height is set automatically and the actors' eyelines stay in view." done={Boolean(reactionFile)}>
+          <ImageDrop
+            value={reactionFile}
+            onChange={setReactionFile}
+            onReject={m => toast.error(m)}
+            icon={Film}
+            title="Drop your reaction image here, or browse"
+            hint="A Telugu reaction face: e.g. Rao Ramesh, Suriya, Sunil, Srikanth, Brahmanandam."
+            thumbClass="h-[72px] w-32"
+            note="Goes in the bottom punchline section."
+          />
+        </Step>
+
+        {/* 4. Meme type */}
+        <Step n={4} title="Meme type" hint="Decides how the pictures are arranged." done>
+          <div role="radiogroup" aria-label="Meme type" className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+            {MEME_TYPES.map(type => {
+              const active = memeType === type.id;
+              return (
+                <button
+                  key={type.id}
+                  type="button"
+                  role="radio"
+                  aria-checked={active}
+                  onClick={() => setMemeType(type.id)}
+                  className={cn(
+                    'flex items-start gap-3 rounded-lg border p-3.5 text-left transition-all duration-150',
+                    active ? 'border-ink bg-marker-soft shadow-hard-sm' : 'border-line-strong bg-surface hover:border-ink'
+                  )}
+                >
+                  <LayoutGlyph type={type.id} />
+                  <span className="min-w-0">
+                    <span className="block text-[13.5px] font-bold leading-tight">{type.title}</span>
+                    <span className="mt-1 block text-[12px] leading-snug text-muted">{type.desc}</span>
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </Step>
+
+        {/* 5. Design */}
+        <Step
+          n={5}
+          title="Style"
+          hint={
+            <>
+              {settingsLoaded ? 'Starts from your ' : 'Defaults come from '}
+              <Link to="/settings" className="font-semibold text-ink underline decoration-marker decoration-2 underline-offset-2 hover:decoration-ink">
+                Settings
+              </Link>
+              . A change here applies to every text element of this meme only.
+            </>
+          }
+          done
+        >
+          <div className="space-y-6">
+            <div className="grid gap-5 sm:grid-cols-2">
+              <SelectField label="English font" value={fontFamily} onChange={setFontFamily} options={fonts.english.map(f => ({ value: f, label: f }))} />
+              <SelectField label="Telugu font" value={teluguFontFamily} onChange={setTeluguFontFamily} options={fonts.telugu.map(f => ({ value: f, label: f }))} />
+            </div>
+            <div className="grid gap-5 sm:grid-cols-3">
+              <ColorField label="Highlight colour" value={primaryTextColor} onChange={setPrimaryTextColor} />
+              <ColorField label="Text colour" value={secondaryTextColor} onChange={setSecondaryTextColor} />
+              <ColorField label="Outline colour" value={outlineColor} onChange={setOutlineColor} />
+            </div>
+            <div className="grid gap-5 sm:grid-cols-2">
+              <NumberField label="Outline thickness" value={outlineThickness} onChange={setOutlineThickness} spec={{ min: 0, max: 24, step: 1, unit: 'px' }} />
+              <NumberField label="Font size scale" value={fontSizeScale} onChange={setFontSizeScale} spec={{ min: 0.6, max: 1.6, step: 0.05 }} format={v => `${v}×`} />
+            </div>
+            <Segmented
+              label="Canvas size"
+              value={canvasPreset}
+              onChange={setCanvasPreset}
+              options={[
+                { value: 'portrait_4_5', label: '4:5', hint: '1080 × 1350' },
+                { value: 'square_1_1', label: '1:1', hint: '1080 × 1080' },
+                { value: 'story_9_16', label: '9:16', hint: '1080 × 1920' }
+              ]}
+            />
+          </div>
+        </Step>
+      </div>
+
+      {/* Generate bar */}
+      <div className="sticky bottom-[84px] z-30 mt-6 flex items-center justify-between gap-4 rounded-lg border-2 border-ink bg-surface p-3.5 shadow-hard md:bottom-6">
+        <p className="text-[13px] text-muted">
+          <strong className="tabular font-mono text-ink">{subjectFiles.length}</strong> subject {subjectFiles.length === 1 ? 'image' : 'images'} + <strong className="tabular font-mono text-ink">{reactionFile ? 1 : 0}</strong> reaction image
+        </p>
+        <Button variant="primary" size="lg" loading={loading} onClick={handleGenerate} leftIcon={<Wand2 className="h-[18px] w-[18px]" />}>
+          {loading ? 'Making the meme…' : 'Generate meme'}
+        </Button>
       </div>
     </div>
   );
 }
-

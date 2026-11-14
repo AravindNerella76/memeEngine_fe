@@ -1,389 +1,367 @@
-import React, { useState } from 'react';
-import {
-  Sparkles,
-  Layers,
-  Image as ImageIcon,
-  History,
-  Wand2,
-  CheckCircle2,
-  Download,
-  Eye,
-  Sliders,
-  Type,
-  Maximize2,
-  FileText
-} from 'lucide-react';
+import React, { useEffect } from 'react';
+import { Routes, Route, NavLink, Navigate, useLocation, useNavigate } from 'react-router-dom';
+import { ExternalLink, Instagram, LayoutGrid, LogOut, MessageCircle, Palette, RefreshCw, SlidersHorizontal, Sparkles, Wand2, WifiOff } from 'lucide-react';
+import { useAuth } from './auth/AuthProvider';
 import CreateMemeForm from './components/CreateMemeForm';
 import ViralAdaptationForm from './components/ViralAdaptationForm';
 import MemeResultView from './components/MemeResultView';
 import MyMemesGallery from './components/MyMemesGallery';
+import StyleGuideView from './components/StyleGuideView';
+import SettingsPage from './components/settings/SettingsPage';
+import { BRAND } from './brand';
+import { API_BASE } from './api';
+import { Button, LogoMark, cn, useBusy, useConfirm, useSystemStatus } from './ui';
 
-const REFERENCE_FORMATS = [
+const NAV_GROUPS = [
   {
-    id: 'facts_collage',
-    name: '1. Facts / Information Collage',
-    badge: '4 Grid Cells + Telugu Punchline',
-    image: '/output/phase2-facts-collage.png',
-    desc: 'Top header bar + 2x2 grid of 4 subject images with individual subcaptions + bottom reaction panel with Telugu punchline (Ramabhadra font).',
-    specs: {
-      type: 'facts_collage',
-      arrangement: 'grid_2x2',
-      subjects: 4,
-      font: 'Arial Black + Ramabhadra',
-      header: '7 ALWAYS BEEN A SPECIAL NUMBER FOR LORD VISHNU',
-      punchline: 'నంబర్ 7 తో ఇంకో స్పెషల్ ఉంది అది ఏంటో కామెంట్ చేయండి!'
-    }
+    label: 'Make',
+    items: [
+      { path: '/', label: 'Viral Adaptation', tag: 'AI', icon: Sparkles, end: true },
+      { path: '/create', label: 'Create Meme', tag: 'Manual', icon: Wand2 }
+    ]
   },
   {
-    id: 'comparison',
-    name: '2. Comparison Meme (3 Columns)',
-    badge: '3 Equal Vertical Columns',
-    image: '/output/phase2-comparison-columns.png',
-    desc: 'Top header bar + 3 side-by-side vertical columns (931 Crores / 30 Crores / 15 Lakhs) with dual-color badges + reaction scene with punchline.',
-    specs: {
-      type: 'comparison',
-      arrangement: 'columns_3',
-      subjects: 3,
-      font: 'Arial Black + Ramabhadra',
-      header: 'NET WORTH OF CHIEF MINISTERS OF INDIA',
-      punchline: 'మీ అంత పూరెస్ట్ చీఫ్ మినిస్టర్ ని చూడలేదు మేడం!'
-    }
+    label: 'Library',
+    items: [
+      { path: '/memes', label: 'My Memes', icon: LayoutGrid },
+      { path: '/style-guide', label: 'Style Guide', icon: Palette }
+    ]
   },
-  {
-    id: 'trending_news',
-    name: '3. Trending News Meme',
-    badge: 'Side-by-Side News + Quote',
-    image: '/output/phase2-trending-news.png',
-    desc: '2 side-by-side hero images + full quote/statement overlay across subjects with yellow attribution + reaction scene with tag and punchline.',
-    specs: {
-      type: 'trending_news',
-      arrangement: 'side_by_side',
-      subjects: 2,
-      font: 'Arial Black + Ramabhadra',
-      statement: 'CHIRANJEEVI GAVE UP REMUNERATION FOR BHOLA SHANKAR AND AKHIL FOR AGENT... - PRODUCER ANIL SUNKARA',
-      punchline: 'ఎక్కేసారు అయ్యా ఒక మెట్టు ఎక్కేసారు'
-    }
-  },
-  {
-    id: 'movie_update',
-    name: '4. Movie / Celebrity Update',
-    badge: 'Review Points Overlay',
-    image: '/output/phase2-movie-update.png',
-    desc: 'Header banner + 2 poster panels + 4 alternating yellow/white review bullet points + reaction scene with audience tag and punchline.',
-    specs: {
-      type: 'movie_update',
-      arrangement: 'side_by_side',
-      subjects: 2,
-      font: 'Arial Black + Ramabhadra',
-      header: 'OG CENSOR REPORT',
-      punchline: 'చిన్న పాజిటివ్ టాక్ వచ్చినా 500 CR కొట్టే దాకా ఆగదు!'
-    }
-  },
-  {
-    id: 'stacked_comparison',
-    name: '5. Stacked Rows Comparison',
-    badge: 'Horizontal Stacked Rows',
-    image: '/output/phase2-stacked-comparison.png',
-    desc: '2 horizontal stacked rows for crowd size comparison (Thalapathy at 50 / NTR at 19) + bottom reaction panel with multi-line Telugu punchline.',
-    specs: {
-      type: 'comparison',
-      arrangement: 'stacked_rows',
-      subjects: 2,
-      font: 'Arial Black + Ramabhadra',
-      punchline: 'మీరు ఒప్పుకున్నా ఒప్పుకోకపోయినా 19 ఇయర్స్ కే ఈ రేంజ్ ఫ్యాన్స్ ఇండియా లో ఏ హీరో కి లేరు'
-    }
-  }
+  { label: 'Setup', items: [{ path: '/settings', label: 'Settings', icon: SlidersHorizontal }] }
 ];
 
-export default function App() {
-  const [activeTab, setActiveTab] = useState('create');
-  const [currentMeme, setCurrentMeme] = useState(null);
-  const [selectedReference, setSelectedReference] = useState(REFERENCE_FORMATS[0]);
-  const [showJson, setShowJson] = useState(false);
+// Mobile bottom bar: same destinations, one flat row, short labels.
+const TAB_ITEMS = [
+  { path: '/', label: 'Adapt', icon: Sparkles, end: true },
+  { path: '/memes', label: 'Memes', icon: LayoutGrid },
+  { path: '/create', label: 'Create', icon: Wand2 },
+  { path: '/style-guide', label: 'Styles', icon: Palette },
+  { path: '/settings', label: 'Settings', icon: SlidersHorizontal }
+];
 
-  const handleGenerated = (meme) => {
-    setCurrentMeme(meme);
-    setActiveTab('create');
-  };
+/** NavLink that asks before leaving while a meme is being generated. */
+function GuardedNavLink({ to, end, className, children, ...rest }) {
+  const { busy } = useBusy();
+  const confirm = useConfirm();
+  const navigate = useNavigate();
+  const location = useLocation();
 
-  const handleSelectFromGallery = (meme) => {
-    setCurrentMeme(meme);
-    setActiveTab('create');
-  };
-
-  const handleRegenerate = async (instructions) => {
-    if (!currentMeme) return;
-    try {
-      // Send regeneration request with adjusted instructions
-      const updatedDesign = {
-        ...currentMeme.design,
-        customInstructions: instructions
-      };
-
-      const res = await fetch('http://localhost:3000/api/memes/generate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          content: currentMeme.content,
-          assets: currentMeme.assets,
-          design: updatedDesign,
-          layout: currentMeme.layout
-        })
-      });
-
-      if (!res.ok) throw new Error('Regeneration failed');
-      const newMeme = await res.json();
-      setCurrentMeme(newMeme);
-    } catch (err) {
-      alert('Regeneration error: ' + err.message);
-    }
+  const onClick = async e => {
+    if (!busy || e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+    if (location.pathname === to) return;
+    e.preventDefault();
+    const leave = await confirm({
+      title: 'Leave while your meme is being made?',
+      body: 'It keeps running on the server and will be saved in My Memes when it finishes. You will get a notification here, but this page will stop showing progress.',
+      confirmLabel: 'Leave anyway',
+      cancelLabel: 'Stay here'
+    });
+    if (leave) navigate(to);
   };
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans">
-      {/* Top Header */}
-      <header className="border-b border-slate-800 bg-slate-900/90 backdrop-blur sticky top-0 z-50">
-        <div className="max-w-7xl mx-auto px-4 h-16 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-yellow-400 to-amber-500 flex items-center justify-center shadow-lg shadow-amber-500/20">
-              <Sparkles className="w-6 h-6 text-slate-950" />
-            </div>
-            <div>
-              <h1 className="font-extrabold text-lg tracking-tight bg-gradient-to-r from-yellow-300 via-amber-200 to-white bg-clip-text text-transparent">
-                Telugu Meme Engine
-              </h1>
-              <p className="text-xs text-slate-400 font-mono">@kanyaraasi_memes • Automated Studio</p>
-            </div>
-          </div>
+    <NavLink to={to} end={end} className={className} onClick={onClick} {...rest}>
+      {children}
+    </NavLink>
+  );
+}
 
-          <nav className="flex items-center gap-1 bg-slate-950/60 p-1 rounded-xl border border-slate-800">
-            <button
-              onClick={() => {
-                setActiveTab('create');
-                setCurrentMeme(null);
-              }}
-              className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-all ${
-                activeTab === 'create'
-                  ? 'bg-amber-400 text-slate-950 shadow-md shadow-amber-400/20'
-                  : 'text-slate-400 hover:text-white hover:bg-slate-800/50'
-              }`}
-            >
-              <Wand2 className="w-4 h-4" />
-              Create Meme
-            </button>
+/** Sign out, asking first when a meme is still being made (signing out ends this page's progress view). */
+function useSignOut() {
+  const { logout } = useAuth();
+  const { busy } = useBusy();
+  const confirm = useConfirm();
+  return async () => {
+    if (busy) {
+      const ok = await confirm({
+        title: 'Sign out while a meme is being made?',
+        body: 'It keeps running on the server and will be saved in My Memes, but this page stops showing its progress.',
+        confirmLabel: 'Sign out',
+        cancelLabel: 'Stay signed in'
+      });
+      if (!ok) return;
+    }
+    await logout();
+  };
+}
 
-            <button
-              onClick={() => {
-                setActiveTab('viral');
-                setCurrentMeme(null);
-              }}
-              className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-all ${
-                activeTab === 'viral'
-                  ? 'bg-amber-400 text-slate-950 shadow-md shadow-amber-400/20'
-                  : 'text-slate-400 hover:text-white hover:bg-slate-800/50'
-              }`}
-            >
-              <Sparkles className="w-4 h-4" />
-              Viral Adaptation
-            </button>
+/** Who is signed in, and the way out. Hidden when the server has login switched off. */
+function AccountRow() {
+  const { username, authEnabled } = useAuth();
+  const signOut = useSignOut();
+  if (!authEnabled || !username) return null;
+  return (
+    <div className="flex items-center gap-3 rounded border border-white/10 bg-white/[0.05] py-2 pl-2.5 pr-1.5">
+      <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full border-2 border-ink bg-marker font-display text-[14px] font-extrabold uppercase text-ink" aria-hidden="true">
+        {username.charAt(0)}
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="block truncate text-[13px] font-semibold leading-tight text-white" title={username}>
+          {username}
+        </span>
+        <span className="block font-mono text-[11px] text-paper/65">Owner</span>
+      </span>
+      <button
+        type="button"
+        onClick={signOut}
+        title="Sign out"
+        aria-label={`Sign out ${username}`}
+        className="grid h-9 w-9 shrink-0 place-items-center rounded text-paper/75 transition-colors hover:bg-white/[0.1] hover:text-white"
+      >
+        <LogOut className="h-4 w-4" />
+      </button>
+    </div>
+  );
+}
 
-            <button
-              onClick={() => setActiveTab('history')}
-              className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-all ${
-                activeTab === 'history'
-                  ? 'bg-amber-400 text-slate-950 shadow-md shadow-amber-400/20'
-                  : 'text-slate-400 hover:text-white hover:bg-slate-800/50'
-              }`}
-            >
-              <History className="w-4 h-4" />
-              My Memes
-            </button>
+/** One line of the engine status: a dot and a sentence. */
+function StatusLine({ tone, children }) {
+  const dot = { ok: 'bg-live', bad: 'bg-coral', idle: 'bg-paper/30', warn: 'bg-marker' }[tone];
+  return (
+    <li className="flex items-center gap-2.5 text-[13px] text-paper/80">
+      <span className={cn('h-2 w-2 shrink-0 rounded-full', dot, tone === 'idle' && 'animate-pulse')} aria-hidden="true" />
+      <span className="min-w-0 truncate">{children}</span>
+    </li>
+  );
+}
 
-            <button
-              onClick={() => setActiveTab('reference')}
-              className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-all ${
-                activeTab === 'reference'
-                  ? 'bg-amber-400 text-slate-950 shadow-md shadow-amber-400/20'
-                  : 'text-slate-400 hover:text-white hover:bg-slate-800/50'
-              }`}
-            >
-              <CheckCircle2 className="w-4 h-4" />
-              Reference Standards
-            </button>
-          </nav>
-        </div>
-      </header>
-
-      {/* Main Container */}
-      <main className="flex-1 max-w-7xl w-full mx-auto p-4 md:p-6">
-        {/* TAB 1: CREATE MEME / RESULT VIEW */}
-        {activeTab === 'create' && (
-          <div>
-            {currentMeme ? (
-              <MemeResultView
-                meme={currentMeme}
-                onNewMeme={() => setCurrentMeme(null)}
-                onRegenerate={handleRegenerate}
-              />
-            ) : (
-              <CreateMemeForm onGenerated={handleGenerated} />
-            )}
-          </div>
+function EngineStatus() {
+  const { phase, providersOn, visionReady, refresh } = useSystemStatus();
+  return (
+    <div className="rounded-md border border-white/10 bg-white/[0.05] p-3.5" role="status" aria-live="polite">
+      <div className="mb-2.5 flex items-center justify-between">
+        <p className="font-mono text-micro uppercase text-paper/65">Engine</p>
+        {phase === 'down' && (
+          <button type="button" onClick={refresh} className="inline-flex items-center gap-1 text-[12px] font-semibold text-marker hover:text-white">
+            <RefreshCw className="h-3 w-3" /> Retry
+          </button>
         )}
-
-        {/* TAB 2: VIRAL MEME ADAPTATION */}
-        {activeTab === 'viral' && (
-          <div>
-            {currentMeme ? (
-              <MemeResultView
-                meme={currentMeme}
-                onNewMeme={() => setCurrentMeme(null)}
-                onRegenerate={handleRegenerate}
-              />
-            ) : (
-              <ViralAdaptationForm onGenerated={handleGenerated} />
-            )}
-          </div>
+      </div>
+      <ul className="space-y-2">
+        {phase === 'loading' && <StatusLine tone="idle">Checking the engine…</StatusLine>}
+        {phase === 'down' && <StatusLine tone="bad">Offline: backend not reachable</StatusLine>}
+        {phase === 'ok' && <StatusLine tone="ok">Engine online</StatusLine>}
+        {phase !== 'loading' && phase !== 'down' && (
+          <>
+            <StatusLine tone={providersOn > 0 ? 'ok' : 'bad'}>
+              {providersOn} image source{providersOn === 1 ? '' : 's'} on
+            </StatusLine>
+            <StatusLine tone={visionReady === false ? 'bad' : 'ok'}>{visionReady === false ? 'AI vision not set up' : 'AI vision ready'}</StatusLine>
+          </>
         )}
+      </ul>
+    </div>
+  );
+}
 
-        {/* TAB 3: MY MEMES GALLERY */}
-        {activeTab === 'history' && (
-          <MyMemesGallery onSelectMeme={handleSelectFromGallery} />
-        )}
+function Sidebar() {
+  return (
+    <aside className="on-ink fixed inset-y-0 left-0 z-50 hidden w-[252px] flex-col bg-ink text-paper md:flex">
+      <NavLink to="/" className="group flex items-center gap-3 px-5 pb-5 pt-6" aria-label={`${BRAND.product}, home`}>
+        <LogoMark size="md" className="transition-transform duration-200 group-hover:-rotate-6" />
+        <span className="min-w-0">
+          <span className="block font-display text-[19px] font-extrabold leading-none tracking-[-0.02em] text-white">{BRAND.product}</span>
+          <span className="mt-1.5 block truncate font-mono text-[11px] text-paper/65">{BRAND.handle}</span>
+        </span>
+      </NavLink>
 
-        {/* TAB 4: REFERENCE STANDARDS */}
-        {activeTab === 'reference' && (
-          <div className="space-y-6">
-            <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6">
-              <div className="flex flex-wrap items-center justify-between gap-4 mb-3">
-                <div className="flex items-center gap-3">
-                  <span className="px-3 py-1 bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 rounded-full text-xs font-semibold">
-                    Visual Benchmark
-                  </span>
-                  <h2 className="text-xl font-bold text-white">
-                    Five Visual Reference Standards (@kanyaraasi_memes)
-                  </h2>
-                </div>
-                <div className="text-xs text-slate-400 font-mono bg-slate-950 px-3 py-1.5 rounded-lg border border-slate-800">
-                  Target Resolution: 1080 × 1350 (4:5)
-                </div>
-              </div>
-              <p className="text-slate-400 text-sm leading-relaxed">
-                Every layout is verified against the 5 real sample memes. The engine dynamically calculates positions and crops while preserving Telugu Unicode typography and contrast.
-              </p>
-            </div>
-
-            {/* Reference Selector Tabs */}
-            <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-              {REFERENCE_FORMATS.map((f) => (
-                <button
-                  key={f.id}
-                  onClick={() => setSelectedReference(f)}
-                  className={`p-3.5 rounded-xl border text-left transition-all ${
-                    selectedReference.id === f.id
-                      ? 'bg-slate-800 border-amber-400/80 shadow-lg shadow-amber-400/10 ring-1 ring-amber-400/50'
-                      : 'bg-slate-900/80 border-slate-800 hover:border-slate-700 text-slate-400 hover:text-white'
-                  }`}
-                >
-                  <p className="text-xs font-bold text-white mb-1 truncate">{f.name}</p>
-                  <span className="inline-block text-[10px] font-semibold text-amber-300 bg-amber-400/10 px-2 py-0.5 rounded">
-                    {f.badge}
-                  </span>
-                </button>
+      <nav aria-label="Main" className="thin-scrollbar flex-1 overflow-y-auto px-3 pb-4">
+        {NAV_GROUPS.map(group => (
+          <div key={group.label} className="mt-5 first:mt-2">
+            <p className="mb-1.5 px-3 font-mono text-micro uppercase text-paper/60">{group.label}</p>
+            <ul className="space-y-1">
+              {group.items.map(({ path, label, tag, icon: Icon, end }) => (
+                <li key={path}>
+                  <GuardedNavLink
+                    to={path}
+                    end={end}
+                    className={({ isActive }) =>
+                      cn(
+                        'group flex h-10 items-center gap-3 rounded px-3 text-[14px] font-semibold transition-colors',
+                        isActive ? 'bg-marker text-ink shadow-[2px_2px_0_0_rgb(255_255_255/0.22)]' : 'text-paper/70 hover:bg-white/[0.08] hover:text-white'
+                      )
+                    }
+                  >
+                    {({ isActive }) => (
+                      <>
+                        <Icon className="h-[18px] w-[18px] shrink-0" strokeWidth={isActive ? 2.4 : 2} aria-hidden="true" />
+                        <span className="flex-1 truncate">{label}</span>
+                        {tag && (
+                          <span className={cn('rounded px-1.5 py-px font-mono text-[10px] font-medium uppercase tracking-wider', isActive ? 'bg-ink/10 text-ink' : 'bg-white/10 text-paper/60')}>
+                            {tag}
+                          </span>
+                        )}
+                      </>
+                    )}
+                  </GuardedNavLink>
+                </li>
               ))}
-            </div>
-
-            <div className="grid lg:grid-cols-12 gap-6 items-start">
-              <div className="lg:col-span-7 bg-slate-900 border border-slate-800 rounded-2xl p-5">
-                <div className="flex items-center justify-between mb-4">
-                  <div>
-                    <h3 className="font-bold text-white text-base">{selectedReference.name}</h3>
-                    <p className="text-xs text-slate-400 mt-0.5">{selectedReference.desc}</p>
-                  </div>
-                  <a
-                    href={selectedReference.image}
-                    download={`${selectedReference.id}.png`}
-                    className="flex items-center gap-1.5 px-3.5 py-1.5 bg-amber-400 hover:bg-amber-300 text-slate-950 font-bold text-xs rounded-lg shadow-sm transition-all"
-                  >
-                    <Download className="w-3.5 h-3.5" />
-                    Download PNG
-                  </a>
-                </div>
-
-                <div className="rounded-xl overflow-hidden border border-slate-800 bg-black flex items-center justify-center p-2">
-                  <img
-                    src={selectedReference.image}
-                    alt={selectedReference.name}
-                    className="w-full max-h-[720px] object-contain rounded-lg"
-                  />
-                </div>
-              </div>
-
-              <div className="lg:col-span-5 space-y-4">
-                <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5">
-                  <h4 className="font-bold text-white text-sm mb-3 flex items-center gap-2">
-                    <CheckCircle2 className="w-4 h-4 text-emerald-400" />
-                    Separated Architectural Breakdown
-                  </h4>
-
-                  <div className="space-y-3 text-xs">
-                    <div className="bg-slate-950 p-3 rounded-xl border border-slate-800">
-                      <span className="text-amber-400 font-mono font-semibold block mb-1">1. CONTENT</span>
-                      <p className="text-slate-300">
-                        <strong className="text-slate-400">Headline/Topic:</strong> {selectedReference.specs.header || selectedReference.specs.statement?.slice(0, 45) + '...'}
-                      </p>
-                      <p className="text-slate-300 mt-1">
-                        <strong className="text-slate-400">Telugu Punchline:</strong> {selectedReference.specs.punchline}
-                      </p>
-                    </div>
-
-                    <div className="bg-slate-950 p-3 rounded-xl border border-slate-800">
-                      <span className="text-amber-400 font-mono font-semibold block mb-1">2. ASSET MAPPING</span>
-                      <p className="text-slate-300">
-                        <strong className="text-slate-400">Subjects:</strong> {selectedReference.specs.subjects} images with explicit section roles
-                      </p>
-                      <p className="text-slate-300 mt-1">
-                        <strong className="text-slate-400">Reaction Image:</strong> 1 dedicated movie reaction scene
-                      </p>
-                    </div>
-
-                    <div className="bg-slate-950 p-3 rounded-xl border border-slate-800">
-                      <span className="text-amber-400 font-mono font-semibold block mb-1">3. DESIGN SPECIFICATIONS</span>
-                      <p className="text-slate-300">
-                        <strong className="text-slate-400">Fonts:</strong> {selectedReference.specs.font}
-                      </p>
-                      <p className="text-slate-300 mt-1">
-                        <strong className="text-slate-400">Colors:</strong> #FFE500 (Yellow), #FFFFFF, Black stroke (7-8px)
-                      </p>
-                    </div>
-
-                    <div className="bg-slate-950 p-3 rounded-xl border border-slate-800">
-                      <span className="text-amber-400 font-mono font-semibold block mb-1">4. DYNAMIC LAYOUT</span>
-                      <p className="text-slate-300">
-                        <strong className="text-slate-400">Arrangement:</strong> {selectedReference.specs.arrangement}
-                      </p>
-                    </div>
-                  </div>
-
-                  <button
-                    onClick={() => setShowJson(!showJson)}
-                    className="mt-4 w-full py-2 bg-slate-800 hover:bg-slate-750 text-slate-300 rounded-lg text-xs font-semibold flex items-center justify-center gap-2 border border-slate-700"
-                  >
-                    <FileText className="w-3.5 h-3.5" />
-                    {showJson ? 'Hide API Payload' : 'View API Payload'}
-                  </button>
-
-                  {showJson && (
-                    <pre className="mt-3 p-3 bg-black/80 rounded-xl border border-slate-800 text-[11px] font-mono text-emerald-400 overflow-x-auto max-h-60">
-                      {JSON.stringify(selectedReference.specs, null, 2)}
-                    </pre>
-                  )}
-                </div>
-              </div>
-            </div>
+            </ul>
           </div>
+        ))}
+      </nav>
+
+      <div className="space-y-3 border-t border-white/10 p-3">
+        <EngineStatus />
+        <div className="space-y-1">
+          <a
+            href={BRAND.whatsappUrl}
+            target="_blank"
+            rel="noreferrer noopener"
+            className="group flex items-center gap-3 rounded px-2.5 py-2 text-[13px] text-paper/75 transition-colors hover:bg-white/[0.08] hover:text-white"
+          >
+            <span className="grid h-7 w-7 shrink-0 place-items-center rounded bg-white/10 text-paper"><MessageCircle className="h-4 w-4" /></span>
+            <span className="min-w-0 flex-1">
+              <span className="block font-semibold leading-tight">WhatsApp bot</span>
+              <span className="block truncate font-mono text-[11px] text-paper/65">{BRAND.whatsappDisplay}</span>
+            </span>
+            <ExternalLink className="h-3.5 w-3.5 shrink-0 opacity-0 transition-opacity group-hover:opacity-70" />
+          </a>
+          <a
+            href={BRAND.instagramUrl}
+            target="_blank"
+            rel="noreferrer noopener"
+            className="group flex items-center gap-3 rounded px-2.5 py-2 text-[13px] text-paper/75 transition-colors hover:bg-white/[0.08] hover:text-white"
+          >
+            <span className="grid h-7 w-7 shrink-0 place-items-center rounded bg-gradient-to-tr from-amber-400 via-rose-500 to-purple-600 text-white"><Instagram className="h-4 w-4" /></span>
+            <span className="min-w-0 flex-1">
+              <span className="block font-semibold leading-tight">Instagram</span>
+              <span className="block truncate font-mono text-[11px] text-paper/65">{BRAND.handle}</span>
+            </span>
+            <ExternalLink className="h-3.5 w-3.5 shrink-0 opacity-0 transition-opacity group-hover:opacity-70" />
+          </a>
+        </div>
+        <AccountRow />
+      </div>
+    </aside>
+  );
+}
+
+function MobileHeader() {
+  const { phase } = useSystemStatus();
+  const { username, authEnabled } = useAuth();
+  const signOut = useSignOut();
+  const dot = phase === 'ok' ? 'bg-ok' : phase === 'down' ? 'bg-bad' : 'bg-faint animate-pulse';
+  const label = phase === 'ok' ? 'Engine online' : phase === 'down' ? 'Engine offline' : 'Checking the engine';
+  return (
+    <header className="sticky top-0 z-40 flex items-center justify-between border-b border-line bg-paper/90 px-4 py-2.5 backdrop-blur-md md:hidden">
+      <GuardedNavLink to="/" className="flex items-center gap-2.5" aria-label={`${BRAND.product}, home`}>
+        <LogoMark size="sm" />
+        <span className="font-display text-[17px] font-extrabold tracking-[-0.02em]">{BRAND.product}</span>
+      </GuardedNavLink>
+      <div className="flex items-center gap-1">
+        <span className="mr-1 inline-flex items-center gap-1.5 rounded-full border border-line bg-surface px-2.5 py-1 text-[12px] font-semibold text-ink-3" role="status">
+          <span className={cn('h-2 w-2 rounded-full', dot)} aria-hidden="true" />
+          {label}
+        </span>
+        <a href={BRAND.whatsappUrl} target="_blank" rel="noreferrer noopener" aria-label="WhatsApp bot" className="grid h-9 w-9 place-items-center rounded text-ink-3 hover:bg-ink/[0.07]">
+          <MessageCircle className="h-[18px] w-[18px]" />
+        </a>
+        <a href={BRAND.instagramUrl} target="_blank" rel="noreferrer noopener" aria-label={`${BRAND.handle} on Instagram`} className="grid h-9 w-9 place-items-center rounded text-ink-3 hover:bg-ink/[0.07]">
+          <Instagram className="h-[18px] w-[18px]" />
+        </a>
+        {authEnabled && username && (
+          <button type="button" onClick={signOut} aria-label={`Sign out ${username}`} title="Sign out" className="grid h-9 w-9 place-items-center rounded text-ink-3 hover:bg-ink/[0.07]">
+            <LogOut className="h-[18px] w-[18px]" />
+          </button>
         )}
-      </main>
+      </div>
+    </header>
+  );
+}
+
+function BottomNav() {
+  return (
+    <nav aria-label="Main" className="on-ink safe-bottom fixed inset-x-0 bottom-0 z-40 border-t border-white/10 bg-ink px-2 pt-1.5 md:hidden">
+      <ul className="mx-auto flex max-w-md justify-around">
+        {TAB_ITEMS.map(({ path, label, icon: Icon, end }) => (
+          <li key={path} className="flex-1">
+            <GuardedNavLink to={path} end={end} className="group flex flex-col items-center gap-1 py-1.5 text-[11px] font-semibold">
+              {({ isActive }) => (
+                <>
+                  <span className={cn('grid h-7 w-12 place-items-center rounded-full transition-colors', isActive ? 'bg-marker text-ink' : 'text-paper/65 group-hover:text-white')}>
+                    <Icon className="h-[18px] w-[18px]" strokeWidth={isActive ? 2.4 : 2} aria-hidden="true" />
+                  </span>
+                  <span className={isActive ? 'text-white' : 'text-paper/60'}>{label}</span>
+                </>
+              )}
+            </GuardedNavLink>
+          </li>
+        ))}
+      </ul>
+    </nav>
+  );
+}
+
+/** Shown only when the backend cannot be reached, so a blank gallery is never mistaken for "no memes". */
+function OfflineBanner() {
+  const { phase, refresh } = useSystemStatus();
+  if (phase !== 'down') return null;
+  return (
+    <div role="alert" className="mb-6 flex animate-slide-in flex-wrap items-center gap-3 rounded-md border border-bad/30 bg-bad-soft px-4 py-3 text-[13px] text-bad">
+      <WifiOff className="h-4 w-4 shrink-0" aria-hidden="true" />
+      <p className="min-w-0 flex-1 text-ink">
+        <strong className="font-bold">Can't reach the engine</strong> at <code className="font-mono text-[12px]">{API_BASE}</code>. Start it with <code className="font-mono text-[12px]">npm start</code> in <code className="font-mono text-[12px]">memeEngine_be</code>. Retrying automatically.
+      </p>
+      <Button size="sm" variant="secondary" onClick={refresh} leftIcon={<RefreshCw className="h-3.5 w-3.5" />}>
+        Retry now
+      </Button>
+    </div>
+  );
+}
+
+export default function App() {
+  const navigate = useNavigate();
+  const location = useLocation();
+
+  // a new page starts at the top
+  useEffect(() => {
+    window.scrollTo(0, 0);
+  }, [location.pathname]);
+
+  return (
+    <div className="min-h-screen">
+      <a href="#main" className="sr-only z-[100] rounded bg-marker px-4 py-2 font-semibold text-ink focus:not-sr-only focus:fixed focus:left-4 focus:top-4">
+        Skip to content
+      </a>
+      <Sidebar />
+      <MobileHeader />
+
+      <div className="md:pl-[252px]">
+        <main id="main" className="mx-auto w-full max-w-[1240px] px-4 pb-32 pt-6 sm:px-6 md:pb-16 md:pt-10 lg:px-10">
+          <OfflineBanner />
+          <div key={location.pathname} className="page-enter">
+            <Routes>
+              {/* Primary workflow: reference screenshot + reaction image + punchline */}
+              <Route path="/" element={<ViralAdaptationForm onGenerated={meme => navigate(`/meme/${meme.memeId || meme.id}`, { state: { meme, from: 'viral' } })} />} />
+              <Route path="/viral" element={<Navigate to="/" replace />} />
+
+              {/* Gallery of saved memes */}
+              <Route path="/memes" element={<MyMemesGallery onSelectMeme={meme => navigate(`/meme/${meme.memeId || meme.id}`, { state: { meme, from: 'history' } })} />} />
+              <Route path="/history" element={<Navigate to="/memes" replace />} />
+
+              {/* Manual creation from your own images and texts */}
+              <Route path="/create" element={<CreateMemeForm onGenerated={meme => navigate(`/meme/${meme.memeId || meme.id}`, { state: { meme, from: 'create' } })} />} />
+
+              {/* Style guide: five house-style reference layouts */}
+              <Route path="/style-guide" element={<StyleGuideView />} />
+              <Route path="/styles" element={<Navigate to="/style-guide" replace />} />
+              <Route path="/reference" element={<Navigate to="/style-guide" replace />} />
+
+              {/* Settings: typography, effects, canvas, images, discovery, advanced */}
+              <Route path="/settings" element={<SettingsPage />} />
+
+              {/* Result view for an individual meme (supports deep links and page refreshes) */}
+              <Route path="/meme/:id" element={<MemeResultView />} />
+
+              {/* Fallback */}
+              <Route path="*" element={<Navigate to="/" replace />} />
+            </Routes>
+          </div>
+        </main>
+      </div>
+
+      <BottomNav />
     </div>
   );
 }

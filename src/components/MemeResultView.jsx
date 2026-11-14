@@ -1,32 +1,151 @@
-import React, { useState } from 'react';
-import {
-  Download,
-  RotateCcw,
-  Sparkles,
-  CheckCircle2,
-  Wand2,
-  Sliders,
-  ArrowLeft,
-  History,
-  GitBranch,
-  AlertCircle,
-  Eye,
-  Maximize2,
-  Layers,
-  Ratio,
-  X
-} from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { useParams, useNavigate, useLocation } from 'react-router-dom';
+import { ArrowLeft, Check, CheckCircle2, Download, ExternalLink, GitBranch, HelpCircle, ImageOff, Info, Instagram, RotateCcw, ShieldCheck, Wand2 } from 'lucide-react';
+import GenerationDetailsModal from './GenerationDetailsModal';
+import InstagramPublishModal from './InstagramPublishModal';
+import { API_BASE, apiFetch } from '../api';
+import { MATCH_LABEL, providerName, RightsBadge, rightsSummary, sourceTypeText } from './ImageRights';
+import ReplaceImagesPanel from './imageChoice/ReplaceImagesPanel';
+import { Alert, Badge, Button, Card, CardHeader, DataRow, Disclosure, EmptyState, Kbd, Skeleton, Textarea, cn, friendlyDate, useDocumentTitle } from '../ui';
 
-export default function MemeResultView({ meme, onNewMeme, onMemeUpdated }) {
+/** One subject image: rights label, provider, source link (when its terms allow storing it), credit. */
+function SourceRow({ asset, index }) {
+  const r = asset.rights;
+  const credit = r?.attributionRequired ? asset.attribution || r.attribution : null;
+  return (
+    <li className="space-y-1.5 rounded-md border border-line bg-paper/60 p-3">
+      <div className="flex items-center justify-between gap-2">
+        <span className="min-w-0 truncate text-[13px] font-semibold text-ink" title={asset.label || ''}>
+          Image {index + 1}
+          {asset.label ? <span className="font-normal text-muted"> · {asset.label}</span> : null}
+        </span>
+        <RightsBadge rights={r} license={asset.license} compact />
+      </div>
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[12px] text-muted">
+        <span className={asset.selectedBy === 'user' ? 'font-semibold text-ink' : ''}>{sourceTypeText(asset)}</span>
+        {(asset.provider || r?.provider) && <span>{providerName(asset.provider || r?.provider)}</span>}
+        {asset.sourcePage ? (
+          <a href={asset.sourcePage} target="_blank" rel="noreferrer noopener" className="inline-flex items-center gap-0.5 font-semibold text-ink underline decoration-marker decoration-2 underline-offset-2 hover:decoration-ink">
+            source <ExternalLink className="h-3 w-3" />
+          </a>
+        ) : r && r.sourceStored === false ? (
+          <span title={r.storageNote || ''}>link not stored (provider terms)</span>
+        ) : null}
+        {r?.attributionRequired && <span>credit{credit ? `: ${credit}` : ' required'}</span>}
+        {r?.shareAlike && <span>edits share-alike</span>}
+        {asset.referenceMatch && asset.referenceMatch !== 'unknown' && <span>{MATCH_LABEL[asset.referenceMatch] || asset.referenceMatch}</span>}
+      </div>
+    </li>
+  );
+}
+
+const ARRANGEMENT_LABEL = {
+  side_by_side: 'Side by side',
+  columns_3: '3 columns',
+  stacked_rows: 'Stacked rows',
+  grid_2x2: '2 × 2 grid',
+  single: 'Single image',
+  custom_grid: 'Custom grid (from the reference)'
+};
+
+const humanize = s => (s ? String(s).replace(/_/g, ' ').replace(/^\w/, c => c.toUpperCase()) : '-');
+
+const SUGGESTIONS = [
+  'Make the headline 20% bigger',
+  'Make the Telugu text more readable',
+  'Increase the reaction image height',
+  'Use a different image for subject 2',
+  'Make the comparison images equally sized',
+  'Change headline colour to white',
+  'Use Anton font'
+];
+
+function LoadingView() {
+  return (
+    <div className="grid gap-6 lg:grid-cols-[minmax(0,1.25fr)_minmax(0,1fr)]" aria-busy="true" aria-label="Loading meme">
+      <div className="space-y-4">
+        <Skeleton className="h-10 w-48" />
+        <Skeleton className="aspect-[4/5] w-full !rounded-lg" />
+      </div>
+      <div className="space-y-4">
+        <Skeleton className="h-56 w-full !rounded-lg" />
+        <Skeleton className="h-40 w-full !rounded-lg" />
+      </div>
+    </div>
+  );
+}
+
+export default function MemeResultView({ meme: propMeme, onNewMeme, onMemeUpdated, backLabel: propBackLabel }) {
+  const { id } = useParams();
+  const navigate = useNavigate();
+  const location = useLocation();
+
+  const [meme, setMeme] = useState(propMeme || location.state?.meme || null);
+  const [loading, setLoading] = useState(!propMeme && !location.state?.meme && Boolean(id));
+  const [fetchError, setFetchError] = useState(null);
+
   const [instructions, setInstructions] = useState('');
   const [regenerating, setRegenerating] = useState(false);
   const [error, setError] = useState(null);
-  const [activeVersionNumber, setActiveVersionNumber] = useState(meme.currentVersion || 1);
+  const [activeVersionNumber, setActiveVersionNumber] = useState(propMeme?.currentVersion || location.state?.meme?.currentVersion || 1);
   const [restoring, setRestoring] = useState(false);
-  const [showCropComparison, setShowCropComparison] = useState(false);
+  const [showDetails, setShowDetails] = useState(false);
+  const [showInstagramModal, setShowInstagramModal] = useState(false);
+  const [clarification, setClarification] = useState(null);
 
-  if (!meme) return null;
+  useDocumentTitle(meme ? meme.content?.headline || meme.content?.topic || 'Meme' : 'Meme');
 
+  useEffect(() => {
+    if (!meme && id) {
+      setLoading(true);
+      setFetchError(null);
+      apiFetch(`${API_BASE}/api/memes/${id}`)
+        .then(r => (r.ok ? r.json() : Promise.reject(new Error(`Failed to load meme ${id} (status ${r.status})`))))
+        .then(data => {
+          setMeme(data);
+          setActiveVersionNumber(data.currentVersion || 1);
+        })
+        .catch(err => setFetchError(err.message))
+        .finally(() => setLoading(false));
+    }
+  }, [id, meme]);
+
+  if (loading) return <LoadingView />;
+
+  if (fetchError || !meme) {
+    return (
+      <EmptyState
+        tone="bad"
+        icon={ImageOff}
+        title="That meme isn't here"
+        className="mx-auto max-w-xl"
+        action={
+          <Button variant="dark" onClick={() => navigate('/memes')} leftIcon={<ArrowLeft className="h-4 w-4" />}>
+            Back to My Memes
+          </Button>
+        }
+      >
+        {fetchError || 'Could not find the requested meme. It may have been deleted.'}
+      </EmptyState>
+    );
+  }
+
+  const fromTab = location.state?.from;
+  const backLabel = propBackLabel || (fromTab === 'history' ? 'My Memes' : fromTab === 'create' ? 'Create another' : 'Back to Viral Adaptation');
+
+  const handleBack = () => {
+    if (onNewMeme) {
+      onNewMeme();
+    } else if (fromTab === 'history') {
+      navigate('/memes');
+    } else if (fromTab === 'create') {
+      navigate('/create');
+    } else {
+      navigate('/');
+    }
+  };
+
+  const memeId = meme.memeId || meme.id;
   const versions = meme.versions || [];
   const activeVersion = versions.find(v => v.versionNumber === activeVersionNumber) || {
     outputUrls: meme.outputUrls,
@@ -34,6 +153,19 @@ export default function MemeResultView({ meme, onNewMeme, onMemeUpdated }) {
     layout: meme.layout,
     instruction: 'Current Version'
   };
+  // Subject images of the version on screen (each version keeps a snapshot of its assets).
+  const subjectImages = (activeVersion.assets?.subjectImages || meme.assets?.subjectImages || []).filter(Boolean);
+  const showSources = subjectImages.some(a => a.rights || a.sourcePage || a.sourceUrl || a.license || a.sourceType);
+  // Output format chosen in Settings when this version was made (older memes: PNG first)
+  const primaryFormat = activeVersion.design?.style?.image?.primaryFormat === 'jpeg' ? 'jpeg' : 'png';
+  const downloadFormats = primaryFormat === 'jpeg' ? ['jpeg', 'png'] : ['png', 'jpeg'];
+  const rightsCounts = rightsSummary(subjectImages);
+  const width = activeVersion.design?.width || 1080;
+  const height = activeVersion.design?.height || 1350;
+
+  const isPublishedOnInstagram = Boolean(activeVersion.instagramPublish?.status === 'published' || meme.instagramPublish?.status === 'published');
+  const publishedRecord = activeVersion.instagramPublish || meme.instagramPublish;
+  const viewingOld = activeVersionNumber !== meme.currentVersion;
 
   const handleRegenerate = async () => {
     if (!instructions.trim()) {
@@ -44,7 +176,8 @@ export default function MemeResultView({ meme, onNewMeme, onMemeUpdated }) {
     try {
       setRegenerating(true);
       setError(null);
-      const res = await fetch(`http://localhost:3000/api/memes/${meme.memeId || meme.id}/regenerate`, {
+      setClarification(null);
+      const res = await apiFetch(`${API_BASE}/api/memes/${memeId}/regenerate`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ instruction: instructions.trim() })
@@ -52,10 +185,15 @@ export default function MemeResultView({ meme, onNewMeme, onMemeUpdated }) {
 
       if (!res.ok) {
         const errData = await res.json().catch(() => ({}));
+        if (errData.clarification) {
+          setClarification(errData.question || errData.message);
+          return;
+        }
         throw new Error(errData.message || 'Regeneration failed');
       }
 
       const updatedMeme = await res.json();
+      setMeme(updatedMeme);
       setInstructions('');
       setActiveVersionNumber(updatedMeme.currentVersion);
       if (onMemeUpdated) onMemeUpdated(updatedMeme);
@@ -67,17 +205,16 @@ export default function MemeResultView({ meme, onNewMeme, onMemeUpdated }) {
     }
   };
 
-  const handleRestoreVersion = async (vNum) => {
+  const handleRestoreVersion = async vNum => {
     try {
       setRestoring(true);
       setError(null);
-      const res = await fetch(`http://localhost:3000/api/memes/${meme.memeId || meme.id}/restore/${vNum}`, {
-        method: 'POST'
-      });
+      const res = await apiFetch(`${API_BASE}/api/memes/${memeId}/restore/${vNum}`, { method: 'POST' });
       if (!res.ok) {
         throw new Error('Failed to restore version');
       }
       const restored = await res.json();
+      setMeme(restored);
       setActiveVersionNumber(restored.currentVersion);
       if (onMemeUpdated) onMemeUpdated(restored);
     } catch (err) {
@@ -87,327 +224,319 @@ export default function MemeResultView({ meme, onNewMeme, onMemeUpdated }) {
     }
   };
 
-  return (
-    <div className="max-w-5xl mx-auto space-y-6 pb-12">
-      {/* Top Header */}
-      <div className="flex items-center justify-between">
-        <button
-          onClick={onNewMeme}
-          className="flex items-center gap-2 text-xs font-semibold text-slate-400 hover:text-white transition-all bg-slate-900 border border-slate-800 px-3 py-1.5 rounded-lg"
-        >
-          <ArrowLeft className="w-4 h-4" />
-          Back to Create Meme
-        </button>
+  const imageSrc = `${API_BASE}${activeVersion.outputUrls?.[primaryFormat] || activeVersion.outputUrls?.png || activeVersion.outputUrls?.jpeg}`;
 
-        <div className="flex items-center gap-2">
-          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-            <CheckCircle2 className="w-3.5 h-3.5" />
-            MongoDB Synced • Version {activeVersionNumber} of {versions.length || 1}
-          </span>
-          <span className="text-xs font-mono text-slate-400 bg-slate-900 border border-slate-800 px-2.5 py-1 rounded-lg">
-            {activeVersion.design?.width || 1080} × {activeVersion.design?.height || 1350}
-          </span>
+  return (
+    <div>
+      {/* Top bar */}
+      <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
+        <Button variant="secondary" size="sm" onClick={handleBack} leftIcon={<ArrowLeft className="h-4 w-4" />}>
+          {backLabel}
+        </Button>
+
+        <div className="flex flex-wrap items-center gap-2">
+          {meme.pipeline === 'viral_adaptation_v2' && (
+            <Button variant="secondary" size="sm" onClick={() => setShowDetails(true)} leftIcon={<Info className="h-4 w-4" />}>
+              Generation details
+            </Button>
+          )}
+          <Badge tone="ok" icon={CheckCircle2}>
+            Saved · v{activeVersionNumber} of {versions.length || 1}
+          </Badge>
+          <Badge tone="outline" mono>
+            {width} × {height}
+          </Badge>
         </div>
       </div>
 
+      <div className="mb-6">
+        <p className="mb-2 inline-flex items-center gap-2 font-mono text-micro uppercase text-muted">
+          <span className="h-2 w-2 rounded-full bg-marker ring-[1.5px] ring-ink" aria-hidden="true" />
+          {humanize(activeVersion.layout?.memeType)} · {friendlyDate(meme.createdAt)}
+        </p>
+        <h1 className="text-[28px] font-extrabold leading-tight tracking-[-0.025em] sm:text-[36px]">{meme.content?.headline || meme.content?.topic || 'Your meme'}</h1>
+        {meme.content?.punchline && <p className="telugu-text mt-2 max-w-2xl text-[15px] leading-relaxed text-muted">{meme.content.punchline}</p>}
+      </div>
+
+      {clarification && (
+        <Alert tone="warn" icon={HelpCircle} className="mb-5" title="Which change do you mean?">
+          {clarification} Please rephrase the instruction more precisely.
+        </Alert>
+      )}
       {error && (
-        <div className="p-4 bg-rose-500/10 border border-rose-500/30 rounded-xl flex items-center gap-3 text-rose-300 text-sm">
-          <AlertCircle className="w-5 h-5 flex-shrink-0 text-rose-400" />
-          <span>{error}</span>
-        </div>
+        <Alert tone="bad" className="mb-5 animate-slide-in">
+          {error}
+        </Alert>
       )}
 
-      {/* Version History Timeline Pills */}
-      {versions.length > 1 && (
-        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4">
-          <div className="flex items-center gap-2 mb-2">
-            <History className="w-4 h-4 text-amber-400" />
-            <h4 className="text-xs font-bold text-slate-300 uppercase tracking-wider">
-              Version Timeline ({versions.length} Revisions)
-            </h4>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            {versions.map((v) => (
-              <button
-                key={v.versionNumber}
-                type="button"
-                onClick={() => setActiveVersionNumber(v.versionNumber)}
-                className={`px-3 py-1.5 rounded-xl text-xs font-semibold border transition-all flex items-center gap-1.5 ${
-                  activeVersionNumber === v.versionNumber
-                    ? 'bg-amber-400 text-slate-950 border-amber-400 shadow-md shadow-amber-400/20 font-bold'
-                    : 'bg-slate-950 text-slate-400 border-slate-800 hover:text-white hover:border-slate-700'
-                }`}
-              >
-                <GitBranch className="w-3 h-3" />
-                <span>v{v.versionNumber}</span>
-                <span className="text-[10px] opacity-75 truncate max-w-[140px]">
-                  {v.instruction}
-                </span>
-              </button>
-            ))}
-          </div>
-
-          {activeVersionNumber !== meme.currentVersion && (
-            <div className="mt-3 pt-3 border-t border-slate-800 flex items-center justify-between text-xs">
-              <span className="text-amber-300">
-                Viewing historical snapshot of Version {activeVersionNumber}
-              </span>
-              <button
-                onClick={() => handleRestoreVersion(activeVersionNumber)}
-                disabled={restoring}
-                className="px-3 py-1 bg-amber-400 hover:bg-amber-300 text-slate-950 font-bold rounded-lg text-xs"
-              >
-                {restoring ? 'Restoring...' : `Restore v${activeVersionNumber} as Active`}
-              </button>
+      <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)]">
+        {/* ---------------- left: the meme ---------------- */}
+        <div className="min-w-0 space-y-4">
+          <Card tone="stage" pad="md" className="!p-4 sm:!p-6">
+            <div className="flex items-center justify-center">
+              <img
+                key={imageSrc}
+                src={imageSrc}
+                alt="Generated meme"
+                className="block max-h-[78vh] w-auto max-w-full animate-pop rounded-sm border-2 border-ink bg-ink shadow-hard-marker"
+              />
             </div>
+
+            {/* Version filmstrip */}
+            {versions.length > 1 && (
+              <div className="mt-6 border-t border-white/10 pt-4">
+                <p className="mb-2.5 flex items-center gap-2 font-mono text-micro uppercase text-paper/55">
+                  <GitBranch className="h-3 w-3" aria-hidden="true" /> {versions.length} versions
+                </p>
+                <ul className="no-scrollbar -mx-1 flex gap-3 overflow-x-auto px-1 pb-2" role="list">
+                  {versions.map(v => {
+                    const active = activeVersionNumber === v.versionNumber;
+                    return (
+                      <li key={v.versionNumber} className="shrink-0">
+                        <button
+                          type="button"
+                          onClick={() => setActiveVersionNumber(v.versionNumber)}
+                          aria-current={active ? 'true' : undefined}
+                          title={v.instruction}
+                          className="group block w-[78px] text-left"
+                        >
+                          <span
+                            className={cn(
+                              'relative block aspect-[4/5] overflow-hidden rounded border-2 bg-ink-2 transition-all',
+                              active ? 'border-marker shadow-[3px_3px_0_0_rgb(var(--marker))]' : 'border-white/20 opacity-70 group-hover:border-white/60 group-hover:opacity-100'
+                            )}
+                          >
+                            <img src={`${API_BASE}${v.outputUrls?.jpeg || v.outputUrls?.png}`} alt={`Version ${v.versionNumber}`} loading="lazy" decoding="async" className="h-full w-full object-cover" />
+                          </span>
+                          <span className={cn('mt-1.5 block font-mono text-[11px] font-semibold', active ? 'text-marker' : 'text-paper/65')}>v{v.versionNumber}</span>
+                          <span className="block truncate text-[10.5px] text-paper/45">{v.instruction}</span>
+                        </button>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </div>
+            )}
+          </Card>
+
+          {viewingOld && (
+            <Alert
+              tone="warn"
+              action={
+                <Button size="sm" variant="dark" onClick={() => handleRestoreVersion(activeVersionNumber)} loading={restoring}>
+                  Restore v{activeVersionNumber}
+                </Button>
+              }
+            >
+              You are looking at the saved snapshot of <strong>version {activeVersionNumber}</strong>. Restore it to make it the active one.
+            </Alert>
           )}
-        </div>
-      )}
 
-      <div className="grid lg:grid-cols-12 gap-6 items-start">
-        {/* Left Column: Meme Image Preview */}
-        <div className="lg:col-span-7 bg-slate-900 border border-slate-800 rounded-2xl p-4 flex flex-col items-center">
-          <div className="rounded-xl overflow-hidden border border-slate-800 bg-black w-full flex items-center justify-center">
-            <img
-              src={`http://localhost:3000${activeVersion.outputUrls?.png || activeVersion.outputUrls?.jpeg}`}
-              alt="Generated Meme Result"
-              className="w-full max-h-[720px] object-contain rounded-lg shadow-2xl"
-            />
-          </div>
+          {/* Publish + download */}
+          <Card pad="md" className="space-y-3">
+            <Button variant="primary" size="lg" className="w-full" onClick={() => setShowInstagramModal(true)} leftIcon={<Instagram className="h-[18px] w-[18px]" />}>
+              Publish to Instagram
+            </Button>
 
-          {/* Download Action Buttons */}
-          <div className="flex items-center gap-3 w-full mt-4">
-            <a
-              href={`http://localhost:3000/api/memes/${meme.memeId || meme.id}/download/png?version=${activeVersionNumber}`}
-              download={`kanyaraasi_${(meme.memeId || meme.id).substring(0, 8)}_v${activeVersionNumber}.png`}
-              className="flex-1 flex items-center justify-center gap-2 py-3 bg-gradient-to-r from-amber-400 to-yellow-400 hover:from-amber-300 hover:to-yellow-300 text-slate-950 font-extrabold text-xs rounded-xl shadow-lg shadow-amber-400/10 transition-all"
-            >
-              <Download className="w-4 h-4" />
-              Download PNG (v{activeVersionNumber})
-            </a>
-
-            <a
-              href={`http://localhost:3000/api/memes/${meme.memeId || meme.id}/download/jpeg?version=${activeVersionNumber}`}
-              download={`kanyaraasi_${(meme.memeId || meme.id).substring(0, 8)}_v${activeVersionNumber}.jpeg`}
-              className="flex-1 flex items-center justify-center gap-2 py-3 bg-slate-800 hover:bg-slate-700 text-white font-bold text-xs rounded-xl border border-slate-700 transition-all"
-            >
-              <Download className="w-4 h-4" />
-              Download JPEG (v{activeVersionNumber})
-            </a>
-          </div>
-
-          {/* Aspect Ratio & Intelligent Framing Details */}
-          <div className="w-full mt-4 pt-4 border-t border-slate-800/80">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-xs font-bold text-slate-300 flex items-center gap-1.5">
-                <Ratio className="w-3.5 h-3.5 text-amber-400" />
-                Aspect Ratio & Intelligent Framing
-              </span>
-              <button
-                type="button"
-                onClick={() => setShowCropComparison(true)}
-                className="text-[11px] font-semibold text-amber-400 hover:text-amber-300 flex items-center gap-1 bg-amber-400/10 hover:bg-amber-400/20 px-2.5 py-1 rounded-lg transition-all"
+            {isPublishedOnInstagram && (
+              <Alert
+                tone="ok"
+                compact
+                action={
+                  publishedRecord?.permalink && (
+                    <a href={publishedRecord.permalink} target="_blank" rel="noreferrer noopener" className="inline-flex items-center gap-1 text-[13px] font-semibold text-ink underline decoration-marker decoration-2 underline-offset-2 hover:decoration-ink">
+                      View post <ExternalLink className="h-3 w-3" />
+                    </a>
+                  )
+                }
               >
-                <Eye className="w-3 h-3" />
-                View Crop Comparison
-              </button>
-            </div>
+                <strong>Published to the feed</strong>
+                {publishedRecord?.publishedAt && <span className="text-muted"> · {new Date(publishedRecord.publishedAt).toLocaleDateString()}</span>}
+              </Alert>
+            )}
 
-            <div className="grid grid-cols-2 gap-2 text-[11px]">
-              <div className="bg-slate-950/60 border border-slate-800/80 rounded-xl p-2.5">
-                <div className="text-slate-400 text-[10px] uppercase font-bold tracking-wider mb-0.5">Subject Assets</div>
-                <div className="text-emerald-400 font-semibold flex items-center gap-1">
-                  <CheckCircle2 className="w-3 h-3" /> 3:4 / 2:3 Portrait
-                </div>
-                <div className="text-slate-400 text-[10px] mt-0.5">Rule of thirds face anchor (28%)</div>
+            <div className="grid grid-cols-2 gap-3">
+              {downloadFormats.map((fmt, i) => (
+                <Button
+                  key={fmt}
+                  as="a"
+                  variant={i === 0 ? 'dark' : 'secondary'}
+                  href={`${API_BASE}/api/memes/${memeId}/download/${fmt}?version=${activeVersionNumber}`}
+                  download={`kanyaraasi_${memeId.substring(0, 8)}_v${activeVersionNumber}.${fmt}`}
+                  leftIcon={<Download className="h-4 w-4" />}
+                >
+                  {fmt.toUpperCase()}
+                  <span className="font-mono text-[12px] font-medium opacity-70">v{activeVersionNumber}</span>
+                </Button>
+              ))}
+            </div>
+          </Card>
+
+          {/* Layout facts of the version on screen (real data from this meme) */}
+          <dl className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+            {[
+              ['Meme type', humanize(activeVersion.layout?.memeType)],
+              ['Arrangement', ARRANGEMENT_LABEL[activeVersion.layout?.arrangement] || humanize(activeVersion.layout?.arrangement)],
+              ['Images', `${subjectImages.length} + your reaction`],
+              ['Size', `${width} × ${height}`]
+            ].map(([k, v]) => (
+              <div key={k} className="rounded-md border border-line bg-surface p-3">
+                <dt className="font-mono text-micro uppercase text-muted">{k}</dt>
+                <dd className="mt-1 text-[14px] font-bold leading-snug text-ink">{v}</dd>
               </div>
-
-              <div className="bg-slate-950/60 border border-slate-800/80 rounded-xl p-2.5">
-                <div className="text-slate-400 text-[10px] uppercase font-bold tracking-wider mb-0.5">Reaction Asset</div>
-                <div className="text-emerald-400 font-semibold flex items-center gap-1">
-                  <CheckCircle2 className="w-3 h-3" /> 16:9 Landscape
-                </div>
-                <div className="text-slate-400 text-[10px] mt-0.5">Cinematic widescreen anchor (36%)</div>
-              </div>
-            </div>
-
-            <div className="mt-2 text-center text-[10px] text-slate-400 flex items-center justify-center gap-2">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
-              <span>Equal X/Y scaling guaranteed • Zero pixel stretch or distortion</span>
-            </div>
-          </div>
+            ))}
+          </dl>
         </div>
 
-        {/* Right Column: Regeneration & Specs */}
-        <div className="lg:col-span-5 space-y-4">
-          {/* Natural Language Regeneration Box */}
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5">
-            <h4 className="font-bold text-white text-sm mb-1 flex items-center gap-2">
-              <RotateCcw className="w-4 h-4 text-amber-400" />
-              Natural Language Regeneration
-            </h4>
-            <p className="text-xs text-slate-400 mb-3 leading-relaxed">
-              Describe what should change. The engine mutates the parameter, preserves all other settings, and creates a new version automatically.
-            </p>
+        {/* ---------------- right: change it ---------------- */}
+        <div className="min-w-0 space-y-4">
+          <Card pad="md">
+            <CardHeader icon={RotateCcw} title="Change it in plain words" description="Say what to change. Only that changes; everything else stays, and the result is saved as a new version." />
 
-            <textarea
+            <Textarea
               rows={3}
               value={instructions}
-              onChange={(e) => setInstructions(e.target.value)}
-              placeholder='e.g. "Make the headline 20% bigger", "Change headline colour to white", "Increase the reaction image height", "Use Anton font"'
-              className="w-full bg-slate-950 border border-slate-800 focus:border-amber-400 rounded-xl p-3 text-xs text-white outline-none resize-none mb-3 placeholder-slate-500"
+              onChange={e => setInstructions(e.target.value)}
+              onKeyDown={e => {
+                if ((e.ctrlKey || e.metaKey) && e.key === 'Enter' && !regenerating) handleRegenerate();
+              }}
+              disabled={regenerating}
+              placeholder='e.g. "Make the headline 20% bigger" or "Use Anton font"'
+              aria-label="What should change"
+              className="mb-3 resize-none"
             />
 
-            {/* Quick Instruction Helpers */}
-            <div className="flex flex-wrap gap-1.5 mb-3">
-              {[
-                'Make headline 20% bigger',
-                'Change headline colour to white',
-                'Change text colour to yellow',
-                'Increase reaction image height',
-                'Make outline thicker',
-                'Use Intrepid font',
-                'Use Anton font'
-              ].map((pill, idx) => (
+            <div className="mb-4 flex flex-wrap gap-1.5" aria-label="Suggestions">
+              {SUGGESTIONS.map(pill => (
                 <button
-                  key={idx}
+                  key={pill}
                   type="button"
                   onClick={() => setInstructions(pill)}
-                  className="px-2 py-1 bg-slate-950 hover:bg-slate-800 text-[11px] text-slate-400 hover:text-amber-300 rounded-md border border-slate-800 transition-all"
+                  disabled={regenerating}
+                  className="rounded-full border border-line-strong bg-surface px-3 py-1 text-[12.5px] font-medium text-ink-3 transition-colors hover:border-ink hover:bg-marker-soft hover:text-ink disabled:opacity-50"
                 >
                   {pill}
                 </button>
               ))}
             </div>
 
-            <button
-              type="button"
-              disabled={regenerating}
-              onClick={handleRegenerate}
-              className="w-full py-2.5 bg-gradient-to-r from-amber-400 to-yellow-400 hover:from-amber-300 hover:to-yellow-300 text-slate-950 rounded-xl text-xs font-extrabold flex items-center justify-center gap-2 transition-all disabled:opacity-50"
+            <Button variant="dark" size="lg" className="w-full" loading={regenerating} onClick={handleRegenerate} leftIcon={<Wand2 className="h-[18px] w-[18px]" />}>
+              {regenerating ? 'Making a new version…' : `Make version ${(meme.currentVersion || 1) + 1}`}
+            </Button>
+            <p className="mt-2.5 flex items-center justify-center gap-1.5 text-[12px] text-muted">
+              <Kbd>Ctrl</Kbd>
+              <Kbd>Enter</Kbd> to apply
+            </p>
+          </Card>
+
+          {/* Replace individual images (no manual editor) */}
+          <ReplaceImagesPanel
+            key={`${memeId}-${meme.currentVersion}`}
+            meme={meme}
+            isCurrent={activeVersionNumber === (meme.currentVersion || 1)}
+            onApplied={updated => {
+              setMeme(updated);
+              setActiveVersionNumber(updated.currentVersion);
+              if (onMemeUpdated) onMemeUpdated(updated);
+            }}
+          />
+
+          {/* Where each subject image came from, and its rights label */}
+          {showSources && (
+            <Card pad="md">
+              <CardHeader
+                icon={ShieldCheck}
+                title="Image sources and rights"
+                actions={
+                  meme.pipeline === 'viral_adaptation_v2' && (
+                    <Button variant="link" onClick={() => setShowDetails(true)} className="text-[13px]">
+                      Full details
+                    </Button>
+                  )
+                }
+              />
+              <ul className="space-y-2">
+                {subjectImages.map((a, i) => (
+                  <SourceRow key={a.id || i} asset={a} index={i} />
+                ))}
+              </ul>
+              {rightsCounts.open > 0 && <p className="mt-3 text-[12.5px] leading-relaxed text-muted">Open-licence images ask for a credit line (shown above) in your post caption.</p>}
+            </Card>
+          )}
+
+          {/* Style used by this version */}
+          <Card pad="none" className="px-5 sm:px-6">
+            <Disclosure
+              title={`Style used in version ${activeVersionNumber}`}
+              summary={`${activeVersion.design?.fontFamily || 'Default font'} · ${activeVersion.design?.fontSizeScale ?? 1}× text`}
             >
-              <Wand2 className="w-3.5 h-3.5" />
-              {regenerating ? 'Regenerating New Version...' : 'Regenerate as Version ' + ((meme.currentVersion || 1) + 1)}
-            </button>
-          </div>
-
-          {/* Active Version Parameters */}
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 space-y-3">
-            <h4 className="font-bold text-white text-xs uppercase tracking-wider text-slate-400">
-              Active Version {activeVersionNumber} Parameters
-            </h4>
-
-            <div className="space-y-2 text-xs">
-              <div className="flex justify-between py-1 border-b border-slate-800/80">
-                <span className="text-slate-400">Meme Type</span>
-                <span className="text-white font-semibold font-mono uppercase">{activeVersion.layout?.memeType}</span>
-              </div>
-
-              <div className="flex justify-between py-1 border-b border-slate-800/80">
-                <span className="text-slate-400">Font Size Scale</span>
-                <span className="text-amber-300 font-mono font-bold">{activeVersion.design?.fontSizeScale}x</span>
-              </div>
-
-              <div className="flex justify-between py-1 border-b border-slate-800/80">
-                <span className="text-slate-400">English Font</span>
-                <span className="text-white font-mono">{activeVersion.design?.fontFamily}</span>
-              </div>
-
-              <div className="flex justify-between py-1 border-b border-slate-800/80">
-                <span className="text-slate-400">Telugu Font</span>
-                <span className="text-white font-mono">{activeVersion.design?.teluguFontFamily}</span>
-              </div>
-
-              <div className="flex justify-between py-1 border-b border-slate-800/80">
-                <span className="text-slate-400">Colors</span>
-                <div className="flex items-center gap-1.5">
-                  <span className="w-3 h-3 rounded" style={{ backgroundColor: activeVersion.design?.primaryTextColor }} />
-                  <span className="text-white font-mono">{activeVersion.design?.primaryTextColor}</span>
-                  <span className="text-slate-500">/</span>
-                  <span className="w-3 h-3 rounded" style={{ backgroundColor: activeVersion.design?.secondaryTextColor }} />
-                  <span className="text-white font-mono">{activeVersion.design?.secondaryTextColor}</span>
-                </div>
-              </div>
-
-              <div className="flex justify-between py-1">
-                <span className="text-slate-400">Black Outline</span>
-                <span className="text-white font-mono">{activeVersion.design?.outlineThickness}px</span>
-              </div>
-            </div>
-
-            <button
-              type="button"
-              onClick={onNewMeme}
-              className="mt-4 w-full py-2.5 bg-slate-800 hover:bg-slate-750 text-slate-300 rounded-xl text-xs font-semibold border border-slate-700"
-            >
-              Start New Meme
-            </button>
-          </div>
+              <dl>
+                {activeVersion.appliedChanges?.length > 0 && (
+                  <div className="border-b border-line py-2">
+                    <dt className="text-[13px] text-muted">Changes in this version</dt>
+                    <dd className="mt-1.5 space-y-1">
+                      {activeVersion.appliedChanges.map((c, i) => (
+                        <p key={i} className="flex items-start gap-1.5 text-[13px] font-semibold text-ink">
+                          <Check className="mt-0.5 h-3.5 w-3.5 shrink-0" strokeWidth={3} aria-hidden="true" /> {c}
+                        </p>
+                      ))}
+                    </dd>
+                  </div>
+                )}
+                <DataRow label="Meme type" mono>
+                  {activeVersion.layout?.memeType}
+                </DataRow>
+                <DataRow label="Font size scale" mono>
+                  {activeVersion.design?.fontSizeScale}×
+                </DataRow>
+                <DataRow label="English font" mono>
+                  {activeVersion.design?.fontFamily}
+                </DataRow>
+                <DataRow label="Telugu font" mono>
+                  {activeVersion.design?.teluguFontFamily}
+                </DataRow>
+                <DataRow label="Colours">
+                  <span className="inline-flex items-center gap-2 font-mono text-[12px] font-medium">
+                    <span className="h-4 w-4 rounded border border-ink/30" style={{ backgroundColor: activeVersion.design?.primaryTextColor }} aria-hidden="true" />
+                    {activeVersion.design?.primaryTextColor}
+                    <span className="text-faint">/</span>
+                    <span className="h-4 w-4 rounded border border-ink/30" style={{ backgroundColor: activeVersion.design?.secondaryTextColor }} aria-hidden="true" />
+                    {activeVersion.design?.secondaryTextColor}
+                  </span>
+                </DataRow>
+                <DataRow label="Black outline" mono>
+                  {activeVersion.design?.outlineThickness}px
+                </DataRow>
+              </dl>
+            </Disclosure>
+          </Card>
         </div>
       </div>
 
-      {/* Before / After Cropping Comparison Modal */}
-      {showCropComparison && (
-        <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-4">
-          <div className="bg-slate-900 border border-slate-700 rounded-2xl max-w-5xl w-full max-h-[90vh] overflow-y-auto p-6 shadow-2xl flex flex-col">
-            <div className="flex items-center justify-between pb-4 border-b border-slate-800">
-              <div className="flex items-center gap-2">
-                <Ratio className="w-5 h-5 text-amber-400" />
-                <h3 className="text-base font-bold text-white">
-                  Intelligent Cropping & Zero-Distortion Verification
-                </h3>
-              </div>
-              <button
-                type="button"
-                onClick={() => setShowCropComparison(false)}
-                className="p-1.5 rounded-lg bg-slate-800 text-slate-400 hover:text-white hover:bg-slate-700"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
+      {showDetails && <GenerationDetailsModal memeId={memeId} onClose={() => setShowDetails(false)} />}
 
-            <div className="mt-4 space-y-4">
-              <p className="text-xs text-slate-300 leading-relaxed">
-                Comparison showing the raw source input assets (Left: 3:4 portrait, 2:3 portrait, and 16:9 widescreen reaction) versus the final dynamically composed meme (Right).
-                The engine dynamically computes section bounds, preserves natural aspect ratios, anchors portraits at the face eyeline (28-32%), anchors reactions at cinematic eyeline (36%), and enforces equal X and Y scaling for 0% distortion.
-              </p>
-
-              <div className="rounded-xl overflow-hidden border border-slate-800 bg-black">
-                <img
-                  src="/output/aspect-crop-comparison.png"
-                  alt="Aspect Ratio Crop Comparison"
-                  className="w-full object-contain"
-                />
-              </div>
-
-              <div className="grid sm:grid-cols-3 gap-3 pt-2 text-xs">
-                <div className="p-3 bg-slate-950 border border-slate-800 rounded-xl">
-                  <span className="font-bold text-sky-400 block mb-1">1. Subject 1 (3:4 Portrait)</span>
-                  <span className="text-slate-400 text-[11px]">AR = 0.75. Matches vertical Instagram slot. Zero crop on top face circle.</span>
-                </div>
-                <div className="p-3 bg-slate-950 border border-slate-800 rounded-xl">
-                  <span className="font-bold text-emerald-400 block mb-1">2. Subject 2 (2:3 Portrait)</span>
-                  <span className="text-slate-400 text-[11px]">AR = 0.67. Anchored to upper 28% eyeline. Waist trimmed, face & circular markers 100% intact.</span>
-                </div>
-                <div className="p-3 bg-slate-950 border border-slate-800 rounded-xl">
-                  <span className="font-bold text-amber-400 block mb-1">3. Reaction (16:9 Landscape)</span>
-                  <span className="text-slate-400 text-[11px]">AR = 1.78. Dynamic cinematic height. Actor eyes perfectly centered at 36% rule.</span>
-                </div>
-              </div>
-            </div>
-
-            <div className="mt-6 pt-4 border-t border-slate-800 flex justify-end">
-              <button
-                type="button"
-                onClick={() => setShowCropComparison(false)}
-                className="px-5 py-2 bg-amber-400 hover:bg-amber-300 text-slate-950 font-bold text-xs rounded-xl"
-              >
-                Close Inspector
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* Instagram direct publishing */}
+      <InstagramPublishModal
+        isOpen={showInstagramModal}
+        onClose={() => setShowInstagramModal(false)}
+        meme={meme}
+        versionNumber={activeVersionNumber}
+        onPublished={res => {
+          const updatedMeme = {
+            ...meme,
+            instagramPublish: {
+              status: 'published',
+              instagramMediaId: res.mediaId,
+              permalink: res.permalink,
+              publishedAt: res.publishedAt,
+              versionNumber: res.versionNumber,
+              caption: res.caption
+            }
+          };
+          setMeme(updatedMeme);
+          if (onMemeUpdated) onMemeUpdated(updatedMeme);
+        }}
+      />
     </div>
   );
 }

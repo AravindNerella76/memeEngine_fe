@@ -1,32 +1,79 @@
-import React, { useState, useEffect } from 'react';
-import {
-  Download,
-  History,
-  RefreshCw,
-  ExternalLink,
-  Search,
-  Filter,
-  Calendar,
-  Image as ImageIcon,
-  Trash2,
-  GitBranch,
-  Layers
-} from 'lucide-react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { Download, GitBranch, ImageOff, Info, Instagram, LayoutGrid, Plus, RefreshCw, Search, Trash2, WifiOff, X } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import GenerationDetailsModal from './GenerationDetailsModal';
+import { API_BASE, apiFetch } from '../api';
+import { Badge, Button, Chips, EmptyState, PageHeader, Select, Skeleton, cn, friendlyDate, useConfirm, useDocumentTitle, useToast } from '../ui';
+
+const TYPE_OPTIONS = [
+  { value: 'all', label: 'All' },
+  { value: 'facts_collage', label: 'Facts' },
+  { value: 'comparison', label: 'Comparison' },
+  { value: 'trending_news', label: 'News' },
+  { value: 'movie_update', label: 'Movie' },
+  { value: 'custom', label: 'Custom' }
+];
+
+const humanize = s => (s ? String(s).replace(/_/g, ' ') : 'meme');
+
+/** Thumbnail that fades in once loaded, so the grid never pops. */
+function Thumb({ src, alt }) {
+  const [state, setState] = useState('loading');
+  return (
+    <>
+      {state === 'error' ? (
+        <div className="grid h-full w-full place-items-center text-paper/50">
+          <ImageOff className="h-7 w-7" aria-hidden="true" />
+        </div>
+      ) : (
+        <img
+          src={src}
+          alt={alt}
+          loading="lazy"
+          decoding="async"
+          onLoad={() => setState('ready')}
+          onError={() => setState('error')}
+          className={cn('h-full w-full object-contain transition-[opacity,transform] duration-500 group-hover:scale-[1.03]', state === 'ready' ? 'opacity-100' : 'opacity-0')}
+        />
+      )}
+    </>
+  );
+}
+
+function CardSkeleton() {
+  return (
+    <div className="overflow-hidden rounded-lg border border-line bg-surface">
+      <Skeleton className="aspect-[4/5] w-full !rounded-none" />
+      <div className="space-y-2.5 p-4">
+        <Skeleton className="h-4 w-3/4" />
+        <Skeleton className="h-3 w-full" />
+        <Skeleton className="h-3 w-1/2" />
+      </div>
+    </div>
+  );
+}
 
 export default function MyMemesGallery({ onSelectMeme }) {
+  useDocumentTitle('My Memes');
+  const toast = useToast();
+  const confirm = useConfirm();
+
   const [memes, setMemes] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [loaded, setLoaded] = useState(false); // true after the first successful load
   const [error, setError] = useState(null);
 
-  // Filters & Search
+  // Filters & search
   const [search, setSearch] = useState('');
   const [typeFilter, setTypeFilter] = useState('all');
   const [sortOrder, setSortOrder] = useState('newest');
 
-  // Delete modal state
   const [deletingId, setDeletingId] = useState(null);
+  const [detailsId, setDetailsId] = useState(null);
+  const requestId = useRef(0);
 
-  const fetchMemes = async () => {
+  const fetchMemes = useCallback(async () => {
+    const mine = ++requestId.current; // an older, slower response must never overwrite a newer one
     try {
       setLoading(true);
       setError(null);
@@ -35,215 +82,231 @@ export default function MyMemesGallery({ onSelectMeme }) {
       if (typeFilter !== 'all') params.append('type', typeFilter);
       params.append('sort', sortOrder);
 
-      const res = await fetch(`http://localhost:3000/api/memes?${params.toString()}`);
+      const res = await apiFetch(`${API_BASE}/api/memes?${params.toString()}`);
       if (!res.ok) throw new Error('Failed to fetch memes from database');
       const data = await res.json();
+      if (mine !== requestId.current) return;
       setMemes(data);
+      setLoaded(true);
     } catch (err) {
+      if (mine !== requestId.current) return;
       console.error('Fetch error:', err);
       setError(err.message);
     } finally {
-      setLoading(false);
+      if (mine === requestId.current) setLoading(false);
     }
-  };
-
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      fetchMemes();
-    }, 250);
-    return () => clearTimeout(timer);
   }, [search, typeFilter, sortOrder]);
 
-  const handleDelete = async (memeId) => {
-    if (!window.confirm('Are you sure you want to delete this meme? Generated outputs across all versions will be safely removed.')) {
-      return;
-    }
+  useEffect(() => {
+    const timer = setTimeout(fetchMemes, 250);
+    return () => clearTimeout(timer);
+  }, [fetchMemes]);
+
+  const handleDelete = async m => {
+    const memeId = m.memeId || m.id;
+    const title = m.content?.headline || m.content?.topic || 'this meme';
+    const versions = m.versions?.length || 1;
+    const ok = await confirm({
+      title: 'Delete this meme?',
+      body: `“${title}” and ${versions === 1 ? 'its only version' : `all ${versions} of its versions`} will be removed for good. This can't be undone.`,
+      confirmLabel: 'Delete meme',
+      tone: 'danger',
+      preview: (
+        <div className="mx-auto aspect-[4/5] w-28 overflow-hidden rounded border-2 border-ink bg-ink shadow-hard-sm">
+          <img src={`${API_BASE}${m.outputUrls?.png || m.outputUrls?.jpeg}`} alt="" className="h-full w-full object-contain" />
+        </div>
+      )
+    });
+    if (!ok) return;
 
     try {
       setDeletingId(memeId);
-      const res = await fetch(`http://localhost:3000/api/memes/${memeId}`, {
-        method: 'DELETE'
-      });
+      const res = await apiFetch(`${API_BASE}/api/memes/${memeId}`, { method: 'DELETE' });
       if (!res.ok) throw new Error('Failed to delete meme');
-      setMemes(prev => prev.filter(m => (m.memeId || m.id) !== memeId));
+      setMemes(prev => prev.filter(x => (x.memeId || x.id) !== memeId));
+      toast.success('Meme deleted.');
     } catch (err) {
-      alert('Delete error: ' + err.message);
+      toast.error(`Could not delete the meme: ${err.message}`);
     } finally {
       setDeletingId(null);
     }
   };
 
+  const filtered = search.trim() || typeFilter !== 'all';
+  const offline = error && /fetch|network|load failed/i.test(error);
+
   return (
-    <div className="space-y-6 max-w-6xl mx-auto pb-12">
-      {/* Top Controls Bar */}
-      <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6">
-        <div className="flex flex-wrap items-center justify-between gap-4 mb-5">
-          <div>
-            <h2 className="text-xl font-bold text-white flex items-center gap-2">
-              <History className="w-5 h-5 text-amber-400" />
-              My Memes Studio ({memes.length})
-            </h2>
-            <p className="text-xs text-slate-400 mt-1">
-              MongoDB Persisted Records • Multi-Version History • Search & Filters
-            </p>
-          </div>
+    <div>
+      <PageHeader
+        eyebrow="Library"
+        title={
+          <>
+            My memes
+            {loaded && (
+              <span className="tabular ml-3 inline-block -translate-y-1.5 rounded-full border-2 border-ink bg-marker px-3 py-0.5 align-middle font-mono text-[15px] font-semibold shadow-hard-sm">
+                {memes.length}
+              </span>
+            )}
+          </>
+        }
+        description="Everything you have made, with every version. Open a meme to review it, change it, or publish it to Instagram."
+        actions={
+          <>
+            <Button variant="secondary" onClick={fetchMemes} disabled={loading} leftIcon={<RefreshCw className={cn('h-4 w-4', loading && 'animate-spin')} />}>
+              Refresh
+            </Button>
+            <Button as={Link} to="/" variant="primary" leftIcon={<Plus className="h-4 w-4" strokeWidth={2.6} />}>
+              New meme
+            </Button>
+          </>
+        }
+      />
 
-          <button
-            onClick={fetchMemes}
-            disabled={loading}
-            className="flex items-center gap-2 px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-xs font-semibold border border-slate-700 transition-all"
-          >
-            <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
-            Refresh
-          </button>
-        </div>
-
-        {/* Search, Filter, Sort Row */}
-        <div className="grid sm:grid-cols-12 gap-3">
-          <div className="sm:col-span-6 relative">
-            <Search className="w-4 h-4 absolute left-3 top-3 text-slate-500" />
+      {/* Search, filter, sort */}
+      <div className="mb-6 space-y-3">
+        <div className="flex flex-col gap-3 sm:flex-row">
+          <div className="relative flex-1">
+            <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" aria-hidden="true" />
             <input
-              type="text"
+              type="search"
               value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search topic, headline, or Telugu punchline..."
-              className="w-full bg-slate-950 border border-slate-800 focus:border-amber-400 rounded-xl pl-9 pr-4 py-2 text-xs text-white outline-none"
+              onChange={e => setSearch(e.target.value)}
+              placeholder="Search topic, headline or Telugu punchline"
+              aria-label="Search memes"
+              className="field !pl-10 !pr-10 [&::-webkit-search-cancel-button]:hidden"
             />
+            {search && (
+              <button type="button" onClick={() => setSearch('')} aria-label="Clear search" className="absolute right-2 top-1/2 grid h-7 w-7 -translate-y-1/2 place-items-center rounded text-muted hover:bg-ink/10 hover:text-ink">
+                <X className="h-4 w-4" />
+              </button>
+            )}
           </div>
-
-          <div className="sm:col-span-3">
-            <select
-              value={typeFilter}
-              onChange={(e) => setTypeFilter(e.target.value)}
-              className="w-full bg-slate-950 border border-slate-800 focus:border-amber-400 rounded-xl px-3 py-2 text-xs text-white outline-none"
-            >
-              <option value="all">All Meme Types</option>
-              <option value="facts_collage">Facts / Collage</option>
-              <option value="comparison">Comparison</option>
-              <option value="trending_news">Trending News</option>
-              <option value="movie_update">Movie Update</option>
-              <option value="custom">Custom</option>
-            </select>
-          </div>
-
-          <div className="sm:col-span-3">
-            <select
-              value={sortOrder}
-              onChange={(e) => setSortOrder(e.target.value)}
-              className="w-full bg-slate-950 border border-slate-800 focus:border-amber-400 rounded-xl px-3 py-2 text-xs text-white outline-none"
-            >
-              <option value="newest">Sort: Newest First</option>
-              <option value="oldest">Sort: Oldest First</option>
-            </select>
-          </div>
+          <Select value={sortOrder} onChange={e => setSortOrder(e.target.value)} aria-label="Sort order" className="sm:w-48">
+            <option value="newest">Newest first</option>
+            <option value="oldest">Oldest first</option>
+          </Select>
         </div>
+        <Chips scroll label="Filter by meme type" value={typeFilter} onChange={setTypeFilter} options={TYPE_OPTIONS} />
       </div>
 
-      {loading ? (
-        <div className="text-center py-16">
-          <div className="w-8 h-8 border-2 border-amber-400 border-t-transparent rounded-full animate-spin mx-auto mb-3" />
-          <p className="text-xs text-slate-400">Querying MongoDB database...</p>
-        </div>
-      ) : error ? (
-        <div className="p-6 bg-slate-900 border border-slate-800 rounded-2xl text-center text-rose-400 text-sm">
-          {error}
+      {error && !loaded ? (
+        <EmptyState
+          tone="bad"
+          icon={offline ? WifiOff : ImageOff}
+          title={offline ? "Can't reach the engine" : 'The gallery could not load'}
+          action={
+            <Button variant="dark" onClick={fetchMemes} leftIcon={<RefreshCw className="h-4 w-4" />}>
+              Try again
+            </Button>
+          }
+        >
+          {offline ? 'Is the backend running? Start it with npm start in memeEngine_be.' : error}
+        </EmptyState>
+      ) : !loaded && loading ? (
+        <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4" aria-busy="true" aria-label="Loading your memes">
+          {Array.from({ length: 8 }, (_, i) => (
+            <CardSkeleton key={i} />
+          ))}
         </div>
       ) : memes.length === 0 ? (
-        <div className="text-center py-16 bg-slate-900 border border-slate-800 rounded-2xl p-8">
-          <ImageIcon className="w-12 h-12 text-slate-600 mx-auto mb-3" />
-          <h3 className="text-base font-semibold text-white mb-1">No memes matched your criteria</h3>
-          <p className="text-xs text-slate-400 max-w-md mx-auto">
-            Try adjusting your search query or clear the filter to see all saved records.
-          </p>
-        </div>
+        <EmptyState
+          icon={filtered ? Search : LayoutGrid}
+          title={filtered ? 'No memes match' : 'Nothing on the wall yet'}
+          action={
+            filtered ? (
+              <Button
+                variant="secondary"
+                onClick={() => {
+                  setSearch('');
+                  setTypeFilter('all');
+                }}
+              >
+                Clear search and filters
+              </Button>
+            ) : (
+              <Button as={Link} to="/" variant="primary" leftIcon={<Plus className="h-4 w-4" strokeWidth={2.6} />}>
+                Make your first meme
+              </Button>
+            )
+          }
+        >
+          {filtered ? 'Try another word, or set the filter back to All.' : 'Memes you make in Viral Adaptation, over WhatsApp or in Create Meme land here, with every version.'}
+        </EmptyState>
       ) : (
-        <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6">
-          {memes.map((m) => {
+        <div className={cn('stagger grid gap-5 transition-opacity duration-200 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4', loading && 'opacity-60')} aria-busy={loading}>
+          {memes.map((m, idx) => {
             const memeId = m.memeId || m.id;
             const versionCount = m.versions?.length || 1;
+            const title = m.content?.headline || m.content?.topic || 'Telugu meme';
+            const published = m.instagramPublish?.status === 'published';
             return (
-              <div
+              <article
                 key={memeId}
-                className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden flex flex-col hover:border-slate-700 transition-all group"
+                style={{ '--i': Math.min(idx, 10) }}
+                className={cn(
+                  'group relative flex flex-col overflow-hidden rounded-lg border border-line bg-surface shadow-soft transition-all duration-200 hover:-translate-y-1 hover:border-ink hover:shadow-hard',
+                  deletingId === memeId && 'pointer-events-none opacity-50'
+                )}
               >
-                {/* Preview Thumbnail */}
-                <div
-                  onClick={() => onSelectMeme(m)}
-                  className="relative aspect-[4/5] bg-black flex items-center justify-center cursor-pointer overflow-hidden"
-                >
-                  <img
-                    src={`http://localhost:3000${m.outputUrls?.png || m.outputUrls?.jpeg}`}
-                    alt={m.content?.topic}
-                    className="w-full h-full object-contain group-hover:scale-102 transition-transform duration-300"
-                  />
-                  <div className="absolute top-3 left-3 flex items-center gap-1.5">
-                    <span className="bg-slate-950/90 text-amber-300 border border-slate-800 text-[10px] font-mono px-2 py-0.5 rounded font-bold uppercase">
-                      {m.layout?.memeType?.replace('_', ' ')}
-                    </span>
-                    <span className="bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 text-[10px] font-mono px-1.5 py-0.5 rounded font-bold flex items-center gap-1">
-                      <GitBranch className="w-2.5 h-2.5" />
-                      v{m.currentVersion || 1}
-                    </span>
-                  </div>
+                <div className="relative aspect-[4/5] overflow-hidden bg-ink">
+                  <button type="button" onClick={() => onSelectMeme(m)} aria-label={`Open ${title}`} className="block h-full w-full">
+                    <Thumb src={`${API_BASE}${m.outputUrls?.png || m.outputUrls?.jpeg}`} alt={m.content?.topic || title} />
+                  </button>
 
-                  {versionCount > 1 && (
-                    <span className="absolute bottom-3 right-3 bg-slate-950/90 text-slate-300 border border-slate-800 text-[10px] px-2 py-0.5 rounded">
-                      {versionCount} revisions
+                  <div className="pointer-events-none absolute left-3 top-3 flex flex-wrap items-center gap-1.5">
+                    <Badge tone="outline" size="sm" className="border-ink/80 bg-surface capitalize text-ink">
+                      {humanize(m.layout?.memeType)}
+                    </Badge>
+                    <Badge tone="ink" size="sm" mono icon={GitBranch}>
+                      v{m.currentVersion || 1}
+                    </Badge>
+                  </div>
+                  {published && (
+                    <span className="pointer-events-none absolute right-3 top-3 inline-flex h-6 items-center gap-1 rounded-full bg-gradient-to-tr from-amber-400 via-rose-500 to-purple-600 px-2 text-[11px] font-bold text-white shadow" title="Published to Instagram">
+                      <Instagram className="h-3 w-3" aria-hidden="true" /> Live
                     </span>
                   )}
-                </div>
 
-                {/* Card Details */}
-                <div className="p-4 flex-1 flex flex-col justify-between">
-                  <div>
-                    <h4 className="font-bold text-white text-sm line-clamp-1 mb-1">
-                      {m.content?.headline || m.content?.topic || 'Telugu Meme'}
-                    </h4>
-                    <p className="text-xs text-amber-300/90 font-medium line-clamp-2 mb-2 font-mono">
-                      {m.content?.punchline}
-                    </p>
-                  </div>
-
-                  <div className="pt-3 border-t border-slate-800/80 flex items-center justify-between text-xs text-slate-400">
-                    <div className="flex items-center gap-1 text-[11px]">
-                      <Calendar className="w-3 h-3 text-slate-500" />
-                      {new Date(m.createdAt).toLocaleDateString()}
-                    </div>
-
-                    <div className="flex items-center gap-1.5">
-                      <a
-                        href={`http://localhost:3000/api/memes/${memeId}/download/png`}
-                        download={`meme_${memeId.substring(0, 8)}.png`}
-                        className="p-1.5 bg-slate-800 hover:bg-amber-400 hover:text-slate-950 text-slate-300 rounded-lg transition-all"
-                        title="Download PNG"
-                      >
-                        <Download className="w-3.5 h-3.5" />
-                      </a>
-
-                      <button
-                        onClick={() => handleDelete(memeId)}
-                        disabled={deletingId === memeId}
-                        className="p-1.5 bg-slate-800 hover:bg-rose-500 text-slate-400 hover:text-white rounded-lg transition-all"
-                        title="Delete Meme"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
-
-                      <button
-                        onClick={() => onSelectMeme(m)}
-                        className="px-2.5 py-1 bg-amber-400/10 hover:bg-amber-400 hover:text-slate-950 text-amber-300 rounded-lg text-xs font-semibold border border-amber-400/20 transition-all flex items-center gap-1"
-                      >
-                        <span>View</span>
-                        <ExternalLink className="w-3 h-3" />
-                      </button>
-                    </div>
+                  {/* quick actions: appear on hover or keyboard focus, always visible on touch screens */}
+                  <div className="pointer-events-none absolute inset-x-0 bottom-0 flex items-end justify-end gap-1.5 bg-gradient-to-t from-ink/70 via-ink/25 to-transparent p-3 pt-10 opacity-0 transition-opacity duration-200 focus-within:opacity-100 group-hover:opacity-100 [@media(hover:none)]:opacity-100">
+                    <Button
+                      as="a"
+                      variant="secondary"
+                      size="icon-sm"
+                      className="pointer-events-auto"
+                      href={`${API_BASE}/api/memes/${memeId}/download/png`}
+                      download={`meme_${memeId.substring(0, 8)}.png`}
+                      title="Download PNG"
+                      aria-label="Download PNG"
+                    >
+                      <Download className="h-4 w-4" />
+                    </Button>
+                    {m.pipeline === 'viral_adaptation_v2' && (
+                      <Button variant="secondary" size="icon-sm" className="pointer-events-auto" onClick={() => setDetailsId(memeId)} title="Generation details: why these images were chosen" aria-label="Generation details">
+                        <Info className="h-4 w-4" />
+                      </Button>
+                    )}
+                    <Button variant="danger" size="icon-sm" className="pointer-events-auto" onClick={() => handleDelete(m)} disabled={deletingId === memeId} title="Delete meme" aria-label="Delete meme">
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
                   </div>
                 </div>
-              </div>
+
+                <button type="button" onClick={() => onSelectMeme(m)} className="flex flex-1 flex-col gap-1.5 p-4 text-left">
+                  <h3 className="line-clamp-1 text-[15px] font-bold leading-snug text-ink">{title}</h3>
+                  {m.content?.punchline && <p className="telugu-text line-clamp-2 text-[13px] leading-relaxed text-muted">{m.content.punchline}</p>}
+                  <span className="mt-auto flex items-center justify-between gap-2 pt-2 text-[12px] text-muted">
+                    <span>{friendlyDate(m.createdAt)}</span>
+                    {versionCount > 1 && <span className="font-semibold text-ink-3">{versionCount} versions</span>}
+                  </span>
+                </button>
+              </article>
             );
           })}
         </div>
       )}
+
+      {detailsId && <GenerationDetailsModal memeId={detailsId} onClose={() => setDetailsId(null)} />}
     </div>
   );
 }

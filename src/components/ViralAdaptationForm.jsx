@@ -1,135 +1,356 @@
-import React, { useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  Wand2,
-  Upload,
-  Trash2,
-  Sparkles,
   AlertCircle,
-  FileImage,
-  Layers,
-  CheckCircle2,
-  Loader2,
+  Check,
+  Clock,
+  Film,
+  History,
+  Image as ImageIcon,
+  ImagePlus,
+  Lock,
+  Quote,
+  Search,
+  ShieldCheck,
+  Sparkles,
   Type,
-  Eye,
-  Info
+  Wand2
 } from 'lucide-react';
+import { API_BASE, apiFetch } from '../api';
+import ImageSourcesStatus from './ImageSourcesStatus';
+import ViralImageChoices from './imageChoice/ViralImageChoices';
+import PunchlinePreview from './PunchlinePreview';
+import {
+  Badge,
+  Button,
+  Card,
+  Chips,
+  Disclosure,
+  Field,
+  ImageDrop,
+  Input,
+  PageHeader,
+  Textarea,
+  cn,
+  isImageFile,
+  makeImageItem,
+  useBusyGuard,
+  useDocumentTitle,
+  useImageSlot,
+  useToast
+} from '../ui';
 
 const VIRAL_SAMPLES = [
   {
     id: 'sample_movie',
-    name: 'OG Movie Review (Side-by-Side)',
-    refFile: '/output/phase2-movie-update.png',
-    rxFile: '/output/phase1-reference-standard.png',
+    name: 'OG Movie Review',
+    kind: 'Side-by-side',
+    refFile: '/samples/phase2-movie-update.png',
+    rxFile: '/samples/phase1-reference-standard.png',
     refName: 'OG Censor Viral Post',
     punchline: 'ఇది నా సొంత పంచ్‌లైన్! ఏ మార్పు లేకుండా రావాలి!',
     reactionContext: '* థియేటర్ ఆడియన్స్ రెస్పాన్స్'
   },
   {
     id: 'sample_stacked',
-    name: 'Crowd Comparison (Stacked Rows)',
-    refFile: '/output/phase2-stacked-comparison.png',
-    rxFile: '/output/phase2-stacked-comparison.png',
+    name: 'Crowd Comparison',
+    kind: 'Stacked rows',
+    refFile: '/samples/phase2-stacked-comparison.png',
+    rxFile: '/samples/phase2-stacked-comparison.png',
     refName: 'Vijay vs NTR Crowd Comparison',
     punchline: 'ఇది వేరే లెవెల్ క్రౌడ్ బ్రదర్! ఎవరూ మ్యాచ్ చేయలేరు!',
     reactionContext: '* ఫ్యాన్స్ రెస్పాన్స్'
   },
   {
     id: 'sample_facts',
-    name: 'Facts Collage (2x2 Grid)',
-    refFile: '/output/phase2-facts-collage.png',
-    rxFile: '/output/phase2-facts-collage.png',
+    name: 'Facts Collage',
+    kind: '2 × 2 grid',
+    refFile: '/samples/phase2-facts-collage.png',
+    rxFile: '/samples/phase2-facts-collage.png',
     refName: 'Lord Vishnu 7 Facts Viral',
     punchline: 'నంబర్ 7 తో ఇంకో స్పెషల్ ఉంది అది ఏంటో కామెంట్ చేయండి!',
     reactionContext: '* డివోటీస్ రియాక్షన్'
   }
 ];
 
-const AVAILABLE_FONTS = [
-  'Arial Black',
-  'Anton',
-  'Montserrat',
-  'Oswald',
-  'Bebas Neue',
-  'Impact',
-  'Intrepid'
+// Only fonts that are installed on the server can be rendered.
+const AVAILABLE_FONTS = ['Arial Black', 'Anton', 'Impact', 'Intrepid ExtraBold'];
+
+// What the engine does while you wait (timing is an estimate; the server reports no live progress).
+const PHASES = [
+  { title: 'Reading the reference', text: 'Layout, image slots, subjects and their context' },
+  { title: 'Finding and verifying pictures', text: 'Identity checks, internet search, ranking and a visual check of each candidate' },
+  { title: 'Setting the type', text: 'Your style, your reaction image and your exact punchline' }
 ];
 
+/** One numbered step of the form. Turns yellow with a tick once its input is in. */
+function Step({ n, title, hint, done, id, children, aside }) {
+  return (
+    <Card as="section" id={id} aria-labelledby={`${id}-title`} className="scroll-mt-24">
+      <div className="flex items-start gap-4">
+        <span
+          className={cn(
+            'grid h-10 w-10 shrink-0 place-items-center rounded border-2 border-ink font-display text-[18px] font-extrabold transition-colors duration-300',
+            done ? 'bg-marker shadow-hard-sm' : 'bg-surface'
+          )}
+          aria-hidden="true"
+        >
+          {done ? <Check className="h-5 w-5" strokeWidth={3} /> : n}
+        </span>
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
+            <h2 id={`${id}-title`} className="text-[18px] font-bold leading-snug">
+              {title}
+            </h2>
+            {aside}
+          </div>
+          <p className="mt-1 max-w-prose text-[13px] leading-relaxed text-muted">{hint}</p>
+          <div className="mt-4">{children}</div>
+        </div>
+      </div>
+    </Card>
+  );
+}
+
+/** Ring that fills as the three inputs come in. */
+function ReadyRing({ done, total }) {
+  const r = 17;
+  const c = 2 * Math.PI * r;
+  return (
+    <svg viewBox="0 0 44 44" className="h-11 w-11 shrink-0 -rotate-90" aria-hidden="true">
+      <circle cx="22" cy="22" r={r} fill="none" stroke="rgb(var(--line))" strokeWidth="5" />
+      <circle
+        cx="22"
+        cy="22"
+        r={r}
+        fill="none"
+        stroke={done === total ? 'rgb(var(--ink))' : 'rgb(var(--marker-deep))'}
+        strokeWidth="5"
+        strokeLinecap="round"
+        strokeDasharray={c}
+        strokeDashoffset={c - (c * done) / total}
+        className="transition-[stroke-dashoffset] duration-500 ease-out"
+      />
+    </svg>
+  );
+}
+
+/** Live timeline shown while the server works (2–4 minutes). */
+function Progress({ step, elapsedText }) {
+  return (
+    <Card tone="stage" pad="none" className="overflow-hidden animate-pop" role="status" aria-live="polite">
+      <div className="working-bar h-2 animate-stripes" aria-hidden="true" />
+      <div className="p-5 sm:p-6">
+        <div className="flex items-end justify-between gap-3">
+          <div>
+            <p className="font-mono text-micro uppercase text-paper/55">Working</p>
+            <h2 className="mt-1 text-[22px] font-extrabold leading-tight text-white">Making your meme</h2>
+          </div>
+          <div className="text-right" role="timer" aria-live="off">
+            <p className="tabular font-mono text-[30px] font-semibold leading-none text-marker">{elapsedText}</p>
+            <p className="mt-1 text-[12px] text-paper/55">usually 2–4 min</p>
+          </div>
+        </div>
+
+        <ol className="mt-6 space-y-1">
+          {PHASES.map((p, i) => {
+            const idx = i + 1;
+            const state = step > idx ? 'done' : step === idx ? 'active' : 'todo';
+            return (
+              <li key={p.title} className={cn('flex gap-3.5 rounded-md p-3 transition-colors', state === 'active' && 'bg-white/[0.07]')}>
+                <span
+                  className={cn(
+                    'mt-0.5 grid h-6 w-6 shrink-0 place-items-center rounded-full text-[12px] font-bold transition-colors',
+                    state === 'done' && 'bg-marker text-ink',
+                    state === 'active' && 'animate-pulse-ring bg-marker text-ink',
+                    state === 'todo' && 'border border-white/20 text-paper/40'
+                  )}
+                  aria-hidden="true"
+                >
+                  {state === 'done' ? <Check className="h-3.5 w-3.5" strokeWidth={3} /> : idx}
+                </span>
+                <span className="min-w-0">
+                  <span className={cn('block text-[14px] font-semibold', state === 'todo' ? 'text-paper/45' : 'text-white')}>{p.title}</span>
+                  <span className={cn('block text-[12.5px] leading-snug', state === 'todo' ? 'text-paper/30' : 'text-paper/65')}>{p.text}</span>
+                </span>
+                <span className="sr-only">{state === 'done' ? 'done' : state === 'active' ? 'in progress' : 'waiting'}</span>
+              </li>
+            );
+          })}
+        </ol>
+
+        <p className="mt-5 flex items-start gap-2 border-t border-white/10 pt-4 text-[12.5px] leading-snug text-paper/60">
+          <Clock className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+          Keep this tab open. Steps are estimated from typical timing. The result opens by itself when it is ready.
+        </p>
+      </div>
+    </Card>
+  );
+}
+
 export default function ViralAdaptationForm({ onGenerated }) {
-  // Exactly 3 Core Inputs
-  const [referenceFile, setReferenceFile] = useState(null); // { file, preview, name }
-  const [reactionFile, setReactionFile] = useState(null);   // { file, preview, name }
+  const toast = useToast();
+
+  // The three core inputs
+  const [referenceFile, setReferenceFile] = useImageSlot(); // { file, preview, name }
+  const [reactionFile, setReactionFile] = useImageSlot(); // { file, preview, name }
   const [punchline, setPunchline] = useState('');
 
-  // Optional Context & Preferences
+  // Optional context & preferences
   const [reactionContext, setReactionContext] = useState('');
-  const [fontFamily, setFontFamily] = useState('Arial Black');
+  // '' = use the fonts saved in Settings; a name = override the English font for this meme only
+  const [fontFamily, setFontFamily] = useState('');
+  const [settingsFont, setSettingsFont] = useState(null);
+  const [fontChoices, setFontChoices] = useState(AVAILABLE_FONTS);
+  const [punchStyle, setPunchStyle] = useState(null);
+  useEffect(() => {
+    let alive = true;
+    apiFetch(`${API_BASE}/api/settings`)
+      .then(r => (r.ok ? r.json() : null))
+      .then(j => {
+        if (!alive || !j?.settings) return;
+        const s = j.settings;
+        setSettingsFont(s.typography.roles.heading.englishFont);
+        if (Array.isArray(j.fonts?.english) && j.fonts.english.length) setFontChoices(j.fonts.english);
+        // the saved punchline style drives the live preview
+        const ty = s.typography?.roles?.punchline;
+        const fx = s.effects?.roles?.punchline;
+        if (ty && fx) {
+          setPunchStyle({
+            english: ty.englishFont,
+            telugu: ty.teluguFont,
+            size: ty.size * (s.typography.fontSizeScale || 1),
+            weight: ty.weight,
+            position: ty.position,
+            lineHeight: ty.lineHeight,
+            fill: fx.fill.color,
+            highlight: fx.highlight.enabled ? fx.highlight.color : fx.fill.color,
+            stroke: fx.stroke.enabled ? fx.stroke.color : null,
+            strokeWidth: fx.stroke.width
+          });
+        }
+      })
+      .catch(() => {
+        /* older backend without Settings */
+      });
+    return () => {
+      alive = false;
+    };
+  }, []);
+  const [selectedProviders, setSelectedProviders] = useState([]);
+  // optional: { draftId, overrides } from "Choose your own pictures" (the analysis is then reused)
+  const [imageChoices, setImageChoices] = useState(null);
 
-  // Loading & Progress States
+  // Loading & progress
   const [loading, setLoading] = useState(false);
+  const [sampleLoading, setSampleLoading] = useState(false);
   const [progressStep, setProgressStep] = useState(0);
+  const [startedAt, setStartedAt] = useState(null);
+  const [now, setNow] = useState(Date.now());
   const [error, setError] = useState(null);
+  const [errorDetails, setErrorDetails] = useState(null);
+  const errorRef = useRef(null);
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
 
-  // Quick Sample Loader
-  const handleLoadSample = async (sample) => {
+  // Elapsed time while a meme is being made (it usually takes 2-4 minutes).
+  useEffect(() => {
+    if (!startedAt) return undefined;
+    const t = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, [startedAt]);
+  const elapsed = startedAt ? Math.max(0, Math.floor((now - startedAt) / 1000)) : 0;
+  const elapsedText = `${Math.floor(elapsed / 60)}:${String(elapsed % 60).padStart(2, '0')}`;
+
+  useDocumentTitle(loading ? `Making meme ${elapsedText}` : 'Viral Adaptation');
+  useBusyGuard(loading, 'Making your meme');
+
+  // Errors appear at the top of the form; bring them into view.
+  useEffect(() => {
+    if (error && errorRef.current) errorRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }, [error]);
+
+  const inputsReady = [
+    { key: 'reference', label: 'Reference screenshot', ok: Boolean(referenceFile), target: 'step-reference' },
+    { key: 'reaction', label: 'Your reaction image', ok: Boolean(reactionFile), target: 'step-reaction' },
+    { key: 'punchline', label: 'Your punchline', ok: Boolean(punchline.trim()), target: 'step-punchline' }
+  ];
+  const readyCount = inputsReady.filter(i => i.ok).length;
+  const allReady = readyCount === inputsReady.length;
+  const missing = inputsReady.filter(i => !i.ok).map(i => i.label.toLowerCase());
+
+  const goTo = id => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    const focusable = el.querySelector('textarea, input:not([type=hidden])');
+    if (focusable) setTimeout(() => focusable.focus({ preventScroll: true }), 350);
+  };
+
+  // Paste a screenshot (Ctrl+V) into the first empty image slot
+  const slots = useRef({});
+  slots.current = { referenceFile, reactionFile, loading };
+  useEffect(() => {
+    const onPaste = e => {
+      const { referenceFile: ref, reactionFile: rx, loading: busy } = slots.current;
+      if (busy) return;
+      let file = [...(e.clipboardData?.files || [])].find(isImageFile);
+      if (!file) file = [...(e.clipboardData?.items || [])].find(i => i.kind === 'file' && /^image\//.test(i.type))?.getAsFile();
+      if (!file) return;
+      e.preventDefault();
+      const item = { ...makeImageItem(file), name: file.name && file.name !== 'image.png' ? file.name : 'Pasted screenshot.png' };
+      if (!ref) {
+        setReferenceFile(item);
+        toast.success('Pasted as the reference screenshot.');
+      } else if (!rx) {
+        setReactionFile(item);
+        toast.success('Pasted as your reaction image.');
+      } else {
+        URL.revokeObjectURL(item.preview);
+        toast.info('Both images are already set. Remove one first, or use Replace.');
+      }
+    };
+    window.addEventListener('paste', onPaste);
+    return () => window.removeEventListener('paste', onPaste);
+  }, [setReferenceFile, setReactionFile, toast]);
+
+  // Quick sample loader
+  const handleLoadSample = async sample => {
     try {
       setError(null);
-      setLoading(true);
-      setProgressStep(1);
+      setSampleLoading(true);
 
-      // Load reference image as File
       const refRes = await fetch(sample.refFile);
+      if (!refRes.ok) throw new Error(`sample image missing (${sample.refFile})`);
       const refBlob = await refRes.blob();
       const refFileObj = new File([refBlob], `${sample.id}_ref.jpg`, { type: 'image/jpeg' });
-      setReferenceFile({
-        file: refFileObj,
-        preview: URL.createObjectURL(refBlob),
-        name: sample.refName
-      });
+      setReferenceFile({ file: refFileObj, preview: URL.createObjectURL(refBlob), name: sample.refName });
 
-      // Load reaction image as File
       const rxRes = await fetch(sample.rxFile);
+      if (!rxRes.ok) throw new Error(`sample image missing (${sample.rxFile})`);
       const rxBlob = await rxRes.blob();
       const rxFileObj = new File([rxBlob], `${sample.id}_rx.jpg`, { type: 'image/jpeg' });
-      setReactionFile({
-        file: rxFileObj,
-        preview: URL.createObjectURL(rxBlob),
-        name: 'My Reaction Scene'
-      });
+      setReactionFile({ file: rxFileObj, preview: URL.createObjectURL(rxBlob), name: 'My Reaction Scene' });
 
-      // Set Punchline & Context
       setPunchline(sample.punchline);
       setReactionContext(sample.reactionContext || '');
+      toast.success(`Loaded the “${sample.name}” sample.`);
     } catch (err) {
       console.error('Failed to load viral sample:', err);
       setError('Could not load sample files: ' + err.message);
     } finally {
-      setLoading(false);
-      setProgressStep(0);
+      setSampleLoading(false);
     }
   };
 
-  // Drag and drop handlers
-  const handleDrop = (e, target) => {
+  // Submit
+  const handleSubmit = async e => {
     e.preventDefault();
-    const files = e.dataTransfer.files;
-    if (files && files[0]) {
-      const file = files[0];
-      const preview = URL.createObjectURL(file);
-      if (target === 'reference') {
-        setReferenceFile({ file, preview, name: file.name });
-      } else if (target === 'reaction') {
-        setReactionFile({ file, preview, name: file.name });
-      }
-    }
-  };
-
-  const handleDragOver = (e) => {
-    e.preventDefault();
-  };
-
-  // Submit Handler
-  const handleSubmit = async (e) => {
-    e.preventDefault();
+    if (loading) return;
     if (!referenceFile?.file) {
       setError('Please provide Input 1: Viral Meme Reference Screenshot.');
       return;
@@ -143,478 +364,385 @@ export default function ViralAdaptationForm({ onGenerated }) {
       return;
     }
 
+    let timer1;
+    let timer2;
     try {
       setLoading(true);
       setError(null);
-      setProgressStep(1); // Uploading & AI Vision Analyzing
+      setErrorDetails(null);
+      setStartedAt(Date.now());
+      setNow(Date.now());
+      setProgressStep(1); // Uploading & AI vision analysing
 
       const formData = new FormData();
-      formData.append('referenceImage', referenceFile.file);
+      if (imageChoices?.draftId) {
+        // the reference was analysed (and kept) when the pictures were chosen: no second upload or analysis
+        formData.append('draftId', imageChoices.draftId);
+        if (imageChoices.overrides.length) formData.append('slotOverrides', JSON.stringify(imageChoices.overrides));
+      } else {
+        formData.append('referenceImage', referenceFile.file);
+      }
       formData.append('reactionImage', reactionFile.file);
       formData.append('punchline', punchline.trim());
       if (reactionContext.trim()) {
         formData.append('reactionContext', reactionContext.trim());
       }
-      formData.append('fontFamily', fontFamily);
+      if (fontFamily) formData.append('fontFamily', fontFamily);
+      if (selectedProviders && selectedProviders.length > 0) {
+        formData.append('selectedProviders', JSON.stringify(selectedProviders));
+      }
 
-      // Simulated step progression for UX during AI vision processing (~15-20s)
-      const timer1 = setTimeout(() => setProgressStep(2), 6000); // Subject Matching
-      const timer2 = setTimeout(() => setProgressStep(3), 14000); // Canvas Engine Rendering
+      // Indicative step progression (analysis ~30-60s, then discovery + visual verification per image)
+      timer1 = setTimeout(() => setProgressStep(2), 45000); // image discovery & verification
+      timer2 = setTimeout(() => setProgressStep(3), 150000); // rendering
 
-      const res = await fetch('http://localhost:3000/api/memes/adapt-viral', {
-        method: 'POST',
-        body: formData
-      });
+      const res = await apiFetch(`${API_BASE}/api/memes/adapt-viral`, { method: 'POST', body: formData });
 
       clearTimeout(timer1);
       clearTimeout(timer2);
 
       if (!res.ok) {
         const errorData = await res.json().catch(() => ({}));
+        if (errorData.details) setErrorDetails(errorData.details);
         throw new Error(errorData.message || `Adaptation failed with status ${res.status}`);
       }
 
       const generatedMeme = await res.json();
       setProgressStep(4);
-      onGenerated(generatedMeme);
+      if (mounted.current) {
+        onGenerated(generatedMeme);
+      } else {
+        // the user left this page while it ran: tell them, do not yank them to another screen
+        toast.push({
+          kind: 'success',
+          title: 'Your meme is ready',
+          text: 'It is saved in My Memes.',
+          action: { label: 'Open it', onClick: () => onGenerated(generatedMeme) }
+        });
+      }
     } catch (err) {
+      clearTimeout(timer1);
+      clearTimeout(timer2);
       console.error('Viral adaptation error:', err);
-      setError(err.message || 'Failed to adapt viral meme. Please check backend connection.');
+      const message =
+        err instanceof TypeError && /fetch|network|load failed/i.test(err.message)
+          ? 'Could not reach the backend. Is it running (npm start in memeEngine_be)?'
+          : err.message || 'Failed to adapt viral meme. Please check backend connection.';
+      if (mounted.current) setError(message);
+      else toast.error(message, { title: 'The meme could not be made' });
     } finally {
-      setLoading(false);
-      setProgressStep(0);
+      if (mounted.current) {
+        setLoading(false);
+        setProgressStep(0);
+        setStartedAt(null);
+      }
     }
   };
 
-  return (
-    <div className="space-y-8 max-w-5xl mx-auto pb-12">
-      {/* Header Banner */}
-      <div className="bg-gradient-to-r from-slate-900 via-slate-850 to-slate-900 border border-slate-800 rounded-2xl p-6">
-        <div className="flex flex-wrap items-center justify-between gap-4">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-amber-400 text-slate-950 flex items-center justify-center font-bold shadow-lg shadow-amber-400/20">
-              <Sparkles className="w-5 h-5" />
-            </div>
-            <div>
-              <h2 className="text-xl font-bold text-white tracking-tight">
-                Viral Meme Adaptation
-              </h2>
-              <p className="text-xs text-slate-400 mt-0.5">
-                Provide only 3 inputs. The system understands the reference layout, searches the internet for verified high-resolution subject images, and renders your reaction meme automatically.
-              </p>
-            </div>
-          </div>
-          <div className="flex items-center gap-2">
-            <span className="px-3 py-1 bg-amber-400/10 border border-amber-400/20 text-amber-300 rounded-full text-xs font-semibold">
-              AI Vision Layout Detection
-            </span>
-            <span className="px-3 py-1 bg-sky-500/10 border border-sky-500/20 text-sky-400 rounded-full text-xs font-semibold">
-              Internet Image Discovery
-            </span>
-            <span className="px-3 py-1 bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 rounded-full text-xs font-semibold">
-              Deterministic Skia Canvas
-            </span>
-          </div>
-        </div>
-      </div>
+  const customPictures = imageChoices?.overrides?.length || 0;
+  const fineTuneCount = (fontFamily ? 1 : 0) + (reactionContext.trim() ? 1 : 0);
+  const inputRejected = useCallback(message => toast.error(message), [toast]);
 
-      {/* Quick Presets */}
-      <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5">
-        <div className="flex items-center justify-between mb-3">
-          <div className="flex items-center gap-2">
-            <Sparkles className="w-4 h-4 text-amber-400" />
-            <h3 className="text-xs font-bold text-slate-300 uppercase tracking-wider">
-              Quick Test Presets (1-Click Sample Loaders)
-            </h3>
-          </div>
-          <span className="text-[11px] text-slate-500">Populates all 3 inputs for testing</span>
-        </div>
+  return (
+    <div className="pb-6">
+      <PageHeader
+        eyebrow="Studio · AI adaptation"
+        title={
+          <>
+            Adapt a <span className="marker-underline px-1">viral</span> meme
+          </>
+        }
+        description="Drop in the reference, your reaction shot and your punchline. The engine reads the layout, finds pictures it has verified, and sets the type. Your words stay exactly as typed."
+        actions={
+          <Badge tone="marker" icon={Lock} className="-rotate-2 py-0 shadow-hard-sm">
+            Punchline is never edited
+          </Badge>
+        }
+      />
+
+      {/* Samples: fill all three inputs to try the flow */}
+      <div className="mb-6 flex flex-wrap items-center gap-x-4 gap-y-2.5 rounded-lg border border-dashed border-line-strong bg-surface/60 px-4 py-3">
+        <span className="inline-flex items-center gap-2 text-[13px] font-semibold text-ink">
+          <Sparkles className="h-4 w-4" aria-hidden="true" /> No files handy? Try a sample
+        </span>
         <div className="flex flex-wrap gap-2">
-          {VIRAL_SAMPLES.map((s) => (
+          {VIRAL_SAMPLES.map(s => (
             <button
               key={s.id}
               type="button"
-              disabled={loading}
+              disabled={loading || sampleLoading}
               onClick={() => handleLoadSample(s)}
-              className="px-3.5 py-2 bg-slate-800 hover:bg-amber-400 hover:text-slate-950 text-slate-300 rounded-xl text-xs font-semibold border border-slate-700 transition-all flex items-center gap-2 disabled:opacity-50"
+              className="group inline-flex items-center gap-2.5 rounded-full border border-line-strong bg-surface py-1 pl-1 pr-3.5 text-left text-[13px] font-semibold transition-all hover:border-ink hover:bg-marker-soft disabled:cursor-not-allowed disabled:opacity-50"
             >
-              <span>{s.name}</span>
+              <img src={s.refFile} alt="" className="h-7 w-6 rounded-[5px] border border-ink/20 object-cover" />
+              <span className="leading-tight">
+                {s.name}
+                <span className="block text-[11px] font-normal text-muted">{s.kind}</span>
+              </span>
             </button>
           ))}
         </div>
+        {sampleLoading && <span className="text-[12px] text-muted" role="status">Loading sample…</span>}
       </div>
 
-      {/* Error Alert */}
+      {/* Errors appear next to the thing that caused them */}
       {error && (
-        <div className="p-4 bg-rose-500/10 border border-rose-500/30 rounded-xl flex items-start gap-3 text-rose-300 text-sm">
-          <AlertCircle className="w-5 h-5 flex-shrink-0 text-rose-400 mt-0.5" />
-          <div className="space-y-1">
-            <p className="font-semibold">Adaptation Issue</p>
-            <p className="text-xs text-rose-200/90 leading-relaxed">{error}</p>
+        <div ref={errorRef} role="alert" className="mb-6 flex animate-slide-in items-start gap-3.5 rounded-lg border-2 border-bad bg-bad-soft p-4 shadow-[3px_3px_0_0_rgb(var(--bad))]">
+          <AlertCircle className="mt-0.5 h-5 w-5 shrink-0 text-bad" aria-hidden="true" />
+          <div className="min-w-0 flex-1 space-y-1">
+            <p className="text-[15px] font-bold text-ink">The meme could not be made</p>
+            <p className="break-words text-[13.5px] leading-relaxed text-ink-3">{error}</p>
+            {errorDetails?.stage === 'identity' && (
+              <ul className="list-disc space-y-0.5 pl-4 pt-1 text-[12.5px] text-ink-3">
+                {(errorDetails.slots || [])
+                  .filter(s => s.status !== 'resolved')
+                  .map(s => (
+                    <li key={s.slot}>
+                      Slot {s.slot}: {(s.reasons || []).join(' ')} {s.candidates?.length ? `Could be: ${s.candidates.map(c => c.name).join(', ')}.` : ''}
+                    </li>
+                  ))}
+              </ul>
+            )}
+            {errorDetails?.stage === 'discovery' && (
+              <ul className="list-disc space-y-0.5 pl-4 pt-1 text-[12.5px] text-ink-3">
+                {(errorDetails.slots || []).map(s => (
+                  <li key={s.slotId}>
+                    {s.subject}: {s.selected ? (s.selected.title ? `found "${s.selected.title}"` : `found an image (${s.selected.provider})`) : `not found (searched ${(s.providers || []).join(', ')})`}
+                  </li>
+                ))}
+              </ul>
+            )}
           </div>
+          <Button size="sm" variant="secondary" onClick={() => setError(null)}>
+            Dismiss
+          </Button>
         </div>
       )}
 
-      {/* Main Form */}
-      <form onSubmit={handleSubmit} className="space-y-6">
-        {/* INPUT 1: VIRAL MEME REFERENCE */}
-        <section className="bg-slate-900 border border-slate-800 rounded-2xl p-6 space-y-4">
-          <div className="flex items-start justify-between">
-            <div>
-              <div className="flex items-center gap-2">
-                <span className="w-6 h-6 rounded-lg bg-amber-400/20 text-amber-300 border border-amber-400/40 text-xs font-bold flex items-center justify-center">
-                  1
-                </span>
-                <h3 className="text-base font-bold text-white">
-                  Viral Meme Reference Screenshot
-                </h3>
-              </div>
-              <p className="text-xs text-slate-400 mt-1 pl-8">
-                Upload a screenshot of a viral meme from another Instagram page. Used purely as a visual structure reference (layout archetype, subject count, text placement).
-              </p>
-            </div>
-            {referenceFile && (
-              <span className="text-[11px] font-semibold text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2.5 py-1 rounded-lg">
-                Reference Ready
-              </span>
-            )}
-          </div>
+      <form onSubmit={handleSubmit} className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_350px] lg:items-start xl:grid-cols-[minmax(0,1fr)_380px]" noValidate>
+        {/* ---------------- inputs (locked while the engine works) ---------------- */}
+        <fieldset disabled={loading} className="m-0 min-w-0 space-y-5 border-0 p-0">
+          <legend className="sr-only">Meme inputs</legend>
 
-          <div className="pl-8">
-            {referenceFile ? (
-              <div className="flex items-center gap-4 bg-slate-950 border border-slate-800 rounded-xl p-3">
-                <div className="w-24 h-28 rounded-lg overflow-hidden bg-black flex-shrink-0 border border-slate-800">
-                  <img
-                    src={referenceFile.preview}
-                    alt="Reference Preview"
-                    className="w-full h-full object-cover"
-                  />
-                </div>
-                <div className="flex-1 space-y-1">
-                  <p className="text-xs font-semibold text-white truncate max-w-md">
-                    {referenceFile.name}
-                  </p>
-                  <p className="text-[11px] text-slate-400">
-                    Visual template for AI vision analysis
-                  </p>
-                  <div className="pt-2">
-                    <label className="text-xs text-amber-400 hover:text-amber-300 font-bold cursor-pointer">
-                      Replace Reference Screenshot
-                      <input
-                        type="file"
-                        accept="image/*"
-                        className="hidden"
-                        onChange={(e) => {
-                          if (e.target.files?.[0]) {
-                            const file = e.target.files[0];
-                            setReferenceFile({
-                              file,
-                              preview: URL.createObjectURL(file),
-                              name: file.name
-                            });
-                          }
-                        }}
-                      />
-                    </label>
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setReferenceFile(null)}
-                  className="p-2 text-slate-400 hover:text-rose-400 rounded-lg hover:bg-slate-900 transition-all"
-                  title="Remove reference"
-                >
-                  <Trash2 className="w-4 h-4" />
-                </button>
-              </div>
-            ) : (
-              <label
-                onDrop={(e) => handleDrop(e, 'reference')}
-                onDragOver={handleDragOver}
-                className="border-2 border-dashed border-slate-800 hover:border-amber-400/60 rounded-xl p-8 flex flex-col items-center justify-center gap-3 cursor-pointer bg-slate-950/40 hover:bg-slate-950 transition-all text-center group"
-              >
-                <div className="w-12 h-12 rounded-xl bg-slate-800 group-hover:bg-amber-400/20 text-slate-400 group-hover:text-amber-400 flex items-center justify-center transition-all">
-                  <Upload className="w-6 h-6" />
-                </div>
-                <div>
-                  <p className="text-sm font-semibold text-white group-hover:text-amber-300">
-                    Drag and drop viral meme screenshot here, or browse
-                  </p>
-                  <p className="text-xs text-slate-500 mt-0.5">
-                    Supports JPG, PNG, WEBP from Instagram or screenshots
-                  </p>
-                </div>
-                <input
-                  type="file"
-                  accept="image/*"
-                  className="hidden"
-                  onChange={(e) => {
-                    if (e.target.files?.[0]) {
-                      const file = e.target.files[0];
-                      setReferenceFile({
-                        file,
-                        preview: URL.createObjectURL(file),
-                        name: file.name
-                      });
-                    }
-                  }}
-                />
-              </label>
-            )}
-          </div>
-        </section>
-
-        {/* INPUT 2: MEME REACTING IMAGE */}
-        <section className="bg-slate-900 border border-slate-800 rounded-2xl p-6 space-y-4">
-          <div className="flex items-start justify-between">
-            <div>
-              <div className="flex items-center gap-2">
-                <span className="w-6 h-6 rounded-lg bg-amber-400/20 text-amber-300 border border-amber-400/40 text-xs font-bold flex items-center justify-center">
-                  2
-                </span>
-                <h3 className="text-base font-bold text-white">
-                  Meme Reacting Image
-                </h3>
-              </div>
-              <p className="text-xs text-slate-400 mt-1 pl-8">
-                Upload the image that must appear in the bottom reaction section. Used directly without modification or replacement.
-              </p>
-            </div>
-            {reactionFile && (
-              <span className="text-[11px] font-semibold text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2.5 py-1 rounded-lg">
-                Reaction Image Ready
-              </span>
-            )}
-          </div>
-
-          <div className="pl-8">
-            {reactionFile ? (
-              <div className="flex items-center gap-4 bg-slate-950 border border-slate-800 rounded-xl p-3">
-                <div className="w-24 h-24 rounded-lg overflow-hidden bg-black flex-shrink-0 border border-slate-800">
-                  <img
-                    src={reactionFile.preview}
-                    alt="Reaction Preview"
-                    className="w-full h-full object-cover"
-                  />
-                </div>
-                <div className="flex-1 space-y-1">
-                  <p className="text-xs font-semibold text-white truncate max-w-md">
-                    {reactionFile.name}
-                  </p>
-                  <p className="text-[11px] text-slate-400">
-                    Typically 16:9 cinematic widescreen movie reaction scene
-                  </p>
-                  <div className="pt-2">
-                    <label className="text-xs text-amber-400 hover:text-amber-300 font-bold cursor-pointer">
-                      Replace Reaction Image
-                      <input
-                        type="file"
-                        accept="image/*"
-                        className="hidden"
-                        onChange={(e) => {
-                          if (e.target.files?.[0]) {
-                            const file = e.target.files[0];
-                            setReactionFile({
-                              file,
-                              preview: URL.createObjectURL(file),
-                              name: file.name
-                            });
-                          }
-                        }}
-                      />
-                    </label>
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setReactionFile(null)}
-                  className="p-2 text-slate-400 hover:text-rose-400 rounded-lg hover:bg-slate-900 transition-all"
-                  title="Remove reaction image"
-                >
-                  <Trash2 className="w-4 h-4" />
-                </button>
-              </div>
-            ) : (
-              <label
-                onDrop={(e) => handleDrop(e, 'reaction')}
-                onDragOver={handleDragOver}
-                className="border-2 border-dashed border-slate-800 hover:border-amber-400/60 rounded-xl p-8 flex flex-col items-center justify-center gap-3 cursor-pointer bg-slate-950/40 hover:bg-slate-950 transition-all text-center group"
-              >
-                <div className="w-12 h-12 rounded-xl bg-slate-800 group-hover:bg-amber-400/20 text-slate-400 group-hover:text-amber-400 flex items-center justify-center transition-all">
-                  <FileImage className="w-6 h-6" />
-                </div>
-                <div>
-                  <p className="text-sm font-semibold text-white group-hover:text-amber-300">
-                    Drag and drop your movie reaction scene here, or browse
-                  </p>
-                  <p className="text-xs text-slate-500 mt-0.5">
-                    Will be placed in the bottom reaction section
-                  </p>
-                </div>
-                <input
-                  type="file"
-                  accept="image/*"
-                  className="hidden"
-                  onChange={(e) => {
-                    if (e.target.files?.[0]) {
-                      const file = e.target.files[0];
-                      setReactionFile({
-                        file,
-                        preview: URL.createObjectURL(file),
-                        name: file.name
-                      });
-                    }
-                  }}
-                />
-              </label>
-            )}
-          </div>
-        </section>
-
-        {/* INPUT 3: REACTING IMAGE TEXT (PUNCHLINE) */}
-        <section className="bg-slate-900 border border-slate-800 rounded-2xl p-6 space-y-4">
-          <div className="flex items-start justify-between">
-            <div>
-              <div className="flex items-center gap-2">
-                <span className="w-6 h-6 rounded-lg bg-amber-400/20 text-amber-300 border border-amber-400/40 text-xs font-bold flex items-center justify-center">
-                  3
-                </span>
-                <h3 className="text-base font-bold text-white">
-                  Reacting Image Text (Telugu Punchline)
-                </h3>
-              </div>
-              <p className="text-xs text-slate-400 mt-1 pl-8">
-                Exact text to be rendered across the reaction scene in Ramabhadra Telugu font with thick black outline. Preserved verbatim — AI will never modify it.
-              </p>
-            </div>
-            {punchline.trim() && (
-              <span className="text-[11px] font-semibold text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2.5 py-1 rounded-lg">
-                Text Ready
-              </span>
-            )}
-          </div>
-
-          <div className="pl-8 space-y-4">
-            <div>
-              <textarea
-                value={punchline}
-                onChange={(e) => setPunchline(e.target.value)}
-                placeholder="ఉదాహరణ: ఇది నా సొంత పంచ్‌లైన్! ఏ మార్పు లేకుండా రావాలి!"
-                rows={3}
-                className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-sm text-white placeholder-slate-500 outline-none focus:border-amber-400 leading-relaxed font-sans"
-              />
-              <div className="flex items-center justify-between text-[11px] text-slate-500 mt-1">
-                <span className="flex items-center gap-1 text-amber-400/80">
-                  <Info className="w-3.5 h-3.5" />
-                  Rendered with 8px black text outline, drop shadow, and yellow/white contrast.
-                </span>
-                <span>{punchline.length} characters</span>
-              </div>
-            </div>
-
-            {/* Optional Reaction Context / Tag */}
-            <div className="pt-2 border-t border-slate-800/80">
-              <label className="block text-xs font-semibold text-slate-400 mb-1.5">
-                Optional Reaction Context / Tag
-              </label>
-              <input
-                type="text"
-                value={reactionContext}
-                onChange={(e) => setReactionContext(e.target.value)}
-                placeholder="e.g. * థియేటర్ ఆడియన్స్ రెస్పాన్స్ (Leave blank to use reference tag)"
-                className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-xs text-white placeholder-slate-500 outline-none focus:border-amber-400"
-              />
-            </div>
-
-            {/* Optional Typography Family */}
-            <div className="pt-2">
-              <label className="block text-xs font-semibold text-slate-400 mb-1.5 flex items-center gap-1.5">
-                <Type className="w-3.5 h-3.5 text-amber-400" />
-                English Headline / Header Font
-              </label>
-              <div className="flex flex-wrap gap-2">
-                {AVAILABLE_FONTS.map((font) => (
-                  <button
-                    key={font}
-                    type="button"
-                    onClick={() => setFontFamily(font)}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all border ${
-                      fontFamily === font
-                        ? 'bg-amber-400 text-slate-950 border-amber-400 shadow-sm'
-                        : 'bg-slate-950 text-slate-400 border-slate-800 hover:text-white'
-                    }`}
-                  >
-                    {font}
-                  </button>
-                ))}
-              </div>
-            </div>
-          </div>
-        </section>
-
-        {/* Progress Display while processing */}
-        {loading && (
-          <div className="bg-slate-900 border border-amber-400/40 rounded-2xl p-6 space-y-4 shadow-xl shadow-amber-400/5">
-            <div className="flex items-center gap-3">
-              <Loader2 className="w-5 h-5 text-amber-400 animate-spin" />
-              <h4 className="text-sm font-bold text-white">
-                Adapting Viral Meme...
-              </h4>
-            </div>
-
-            <div className="grid sm:grid-cols-3 gap-3 text-xs">
-              <div className={`p-3 rounded-xl border transition-all ${
-                progressStep >= 1
-                  ? 'bg-amber-400/10 border-amber-400/40 text-amber-300'
-                  : 'bg-slate-950 border-slate-800 text-slate-500'
-              }`}>
-                <span className="font-bold block mb-1">Step 1: AI Vision Analysis</span>
-                <span>Extracting layout archetype, subjects, and text overlays</span>
-              </div>
-
-              <div className={`p-3 rounded-xl border transition-all ${
-                progressStep >= 2
-                  ? 'bg-amber-400/10 border-amber-400/40 text-amber-300'
-                  : 'bg-slate-950 border-slate-800 text-slate-500'
-              }`}>
-                <span className="font-bold block mb-1">Step 2: Internet Image Discovery</span>
-                <span>Searching the web & verifying high-resolution subject photos</span>
-              </div>
-
-              <div className={`p-3 rounded-xl border transition-all ${
-                progressStep >= 3
-                  ? 'bg-amber-400/10 border-amber-400/40 text-amber-300'
-                  : 'bg-slate-950 border-slate-800 text-slate-500'
-              }`}>
-                <span className="font-bold block mb-1">Step 3: Canvas Rendering</span>
-                <span>Composing 1080×1350 canvas with Ramabhadra Telugu typography</span>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Submit Button */}
-        <div className="flex items-center justify-end gap-4 pt-2">
-          <button
-            type="submit"
-            disabled={loading || !referenceFile || !reactionFile || !punchline.trim()}
-            className="px-8 py-3.5 bg-gradient-to-r from-yellow-400 to-amber-500 hover:from-yellow-300 hover:to-amber-400 text-slate-950 font-bold text-sm rounded-xl shadow-lg shadow-amber-500/20 disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-2 transition-all transform active:scale-95"
+          <Step
+            n={1}
+            id="step-reference"
+            done={Boolean(referenceFile)}
+            title="The viral reference"
+            hint="A screenshot of a viral meme from another page. It is used only as a structure guide: layout, how many pictures, where the text sits."
+            aside={referenceFile && <Badge tone="ok" dot size="sm">Ready</Badge>}
           >
-            {loading ? (
-              <>
-                <Loader2 className="w-4 h-4 animate-spin" />
-                Adapting Meme...
-              </>
-            ) : (
-              <>
-                <Wand2 className="w-4 h-4" />
-                Adapt & Generate Meme
-              </>
-            )}
-          </button>
+            <ImageDrop
+              value={referenceFile}
+              onChange={setReferenceFile}
+              onReject={inputRejected}
+              icon={ImageIcon}
+              title="Drop the viral screenshot here, or browse"
+              hint="JPG, PNG or WEBP, straight from Instagram or your phone."
+              thumbClass="h-32 w-[104px]"
+              showPasteHint
+              note="Read by the AI for layout only."
+            />
+          </Step>
+
+          <Step
+            n={2}
+            id="step-reaction"
+            done={Boolean(reactionFile)}
+            title="Your reaction image"
+            hint="The picture for the bottom reaction panel. It is used as it is: never swapped, never altered."
+            aside={reactionFile && <Badge tone="ok" dot size="sm">Ready</Badge>}
+          >
+            <ImageDrop
+              value={reactionFile}
+              onChange={setReactionFile}
+              onReject={inputRejected}
+              icon={Film}
+              title="Drop your reaction scene here, or browse"
+              hint="Usually a 16:9 movie moment with a clear face."
+              thumbClass="h-[72px] w-32"
+              note="Goes in the bottom reaction section."
+            />
+          </Step>
+
+          <Step
+            n={3}
+            id="step-punchline"
+            done={Boolean(punchline.trim())}
+            title="Your punchline"
+            hint="Telugu or English. It is placed over the reaction image with the outline and colours from your Settings, and never rewritten."
+            aside={
+              <span className="inline-flex items-center gap-1.5 text-[12px] font-semibold text-muted">
+                <Lock className="h-3 w-3" aria-hidden="true" /> Used exactly as typed
+              </span>
+            }
+          >
+            <div className="space-y-4">
+              <Field
+                label="Punchline text"
+                right={<span className="tabular font-mono text-[12px] text-muted" aria-live="off">{punchline.length} chars</span>}
+              >
+                {({ id }) => (
+                  <Textarea
+                    id={id}
+                    value={punchline}
+                    onChange={e => setPunchline(e.target.value)}
+                    placeholder="ఉదాహరణ: ఇది నా సొంత పంచ్‌లైన్! ఏ మార్పు లేకుండా రావాలి!"
+                    rows={3}
+                    className="telugu-input"
+                  />
+                )}
+              </Field>
+              <PunchlinePreview image={reactionFile?.preview} text={punchline} style={punchStyle} englishFont={fontFamily || undefined} />
+            </div>
+          </Step>
+
+          {/* Optional controls, tucked away until needed */}
+          <p className="px-1 pt-1 font-mono text-micro uppercase text-muted">Fine-tune · all optional</p>
+          <Card pad="none" className="!mt-2 px-5 sm:px-6">
+            <Disclosure
+              icon={ImagePlus}
+              title="Choose your own pictures"
+              summary={customPictures ? `${customPictures} picture${customPictures === 1 ? '' : 's'} chosen by you` : 'The AI picks and verifies every image by default'}
+              badge={customPictures ? <Badge tone="marker" size="sm">{customPictures}</Badge> : null}
+            >
+              <ViralImageChoices referenceFile={referenceFile} disabled={loading} onChange={setImageChoices} />
+            </Disclosure>
+            <Disclosure
+              icon={Search}
+              title="Image search sources"
+              summary={selectedProviders.length ? `${selectedProviders.length} source${selectedProviders.length === 1 ? '' : 's'} on for this meme` : 'Where pictures are searched for'}
+            >
+              <ImageSourcesStatus onSelectionChange={setSelectedProviders} />
+            </Disclosure>
+            <Disclosure
+              icon={Type}
+              title="Type and caption tag"
+              summary={fontFamily ? `English font: ${fontFamily}` : settingsFont ? `Using Settings: ${settingsFont}` : 'Uses your Settings'}
+              badge={fineTuneCount ? <Badge tone="marker" size="sm">{fineTuneCount}</Badge> : null}
+            >
+              <div className="space-y-5">
+                <div>
+                  <p className="mb-2 text-[13px] font-semibold">English font for this meme</p>
+                  <Chips
+                    tone="marker"
+                    label="English font"
+                    value={fontFamily}
+                    onChange={setFontFamily}
+                    options={[
+                      { value: '', label: `From Settings${settingsFont ? ` (${settingsFont})` : ''}` },
+                      ...fontChoices.map(f => ({ value: f, label: f, style: { fontFamily: `"${f}", "Arial Black", sans-serif` } }))
+                    ]}
+                  />
+                </div>
+                <Field label="Reaction tag" optional hint="A short caption on the reaction panel. The reference's own tag is never copied.">
+                  {({ id }) => (
+                    <Input
+                      id={id}
+                      value={reactionContext}
+                      onChange={e => setReactionContext(e.target.value)}
+                      onKeyDown={e => e.key === 'Enter' && e.preventDefault()}
+                      placeholder="e.g. * థియేటర్ ఆడియన్స్ రెస్పాన్స్"
+                      className="telugu-input !text-[15px] !leading-normal"
+                    />
+                  )}
+                </Field>
+              </div>
+            </Disclosure>
+          </Card>
+        </fieldset>
+
+        {/* ---------------- launch panel ---------------- */}
+        <aside className="space-y-4 lg:sticky lg:top-8" aria-label="Generate">
+          {loading ? (
+            <Progress step={progressStep} elapsedText={elapsedText} />
+          ) : (
+            <Card tone="sticker" pad="md">
+              <div className="flex items-center gap-3.5">
+                <ReadyRing done={readyCount} total={inputsReady.length} />
+                <div>
+                  <h2 className="text-[18px] font-bold leading-tight">{allReady ? 'Ready when you are' : 'Almost there'}</h2>
+                  <p className="text-[13px] text-muted">
+                    <span className="tabular font-mono font-semibold text-ink">{readyCount}</span> of {inputsReady.length} inputs in
+                  </p>
+                </div>
+              </div>
+
+              <ul className="mt-4 space-y-1" aria-label="Required inputs">
+                {inputsReady.map(i => (
+                  <li key={i.key}>
+                    <button
+                      type="button"
+                      onClick={() => goTo(i.target)}
+                      className="group flex w-full items-center gap-3 rounded px-2 py-1.5 text-left text-[14px] transition-colors hover:bg-paper"
+                    >
+                      <span
+                        className={cn(
+                          'grid h-5 w-5 shrink-0 place-items-center rounded-full border-2 transition-colors',
+                          i.ok ? 'border-ink bg-marker' : 'border-line-strong bg-surface'
+                        )}
+                        aria-hidden="true"
+                      >
+                        {i.ok && <Check className="h-3 w-3" strokeWidth={3.5} />}
+                      </span>
+                      <span className={cn('flex-1 font-semibold', i.ok ? 'text-ink' : 'text-muted')}>{i.label}</span>
+                      <span className="sr-only">{i.ok ? 'done' : 'missing'}</span>
+                      {!i.ok && <span className="text-[12px] font-semibold text-ink opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100">Add</span>}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+
+              <Button type="submit" variant="primary" size="lg" disabled={!allReady} leftIcon={<Wand2 className="h-[18px] w-[18px]" />} className="mt-5 w-full">
+                Adapt and generate
+              </Button>
+              <p className="mt-3 text-center text-[12.5px] leading-snug text-muted">
+                {allReady ? 'Takes about 2–4 minutes. Keep this tab open.' : `Still needed: ${missing.join(', ')}.`}
+              </p>
+            </Card>
+          )}
+
+          <Card tone="muted" pad="sm" className="!p-4">
+            <ul className="space-y-3 text-[13px] leading-snug text-ink-3">
+              <li className="flex gap-3">
+                <Lock className="mt-0.5 h-4 w-4 shrink-0 text-ink" aria-hidden="true" />
+                <span><strong className="text-ink">Your words stay yours.</strong> No AI-written or edited punchlines.</span>
+              </li>
+              <li className="flex gap-3">
+                <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-ink" aria-hidden="true" />
+                <span><strong className="text-ink">Pictures are checked.</strong> Identity, source and a visual match against the reference.</span>
+              </li>
+              <li className="flex gap-3">
+                <History className="mt-0.5 h-4 w-4 shrink-0 text-ink" aria-hidden="true" />
+                <span><strong className="text-ink">Nothing is lost.</strong> Every change is a new version you can go back to.</span>
+              </li>
+            </ul>
+          </Card>
+        </aside>
+
+        {/* phones: a sticky bar keeps the main action in reach */}
+        <div className="safe-bottom fixed inset-x-3 bottom-[84px] z-30 flex items-center gap-3 rounded-lg border-2 border-ink bg-surface p-2.5 shadow-hard lg:hidden">
+          {loading ? (
+            <>
+              <span className="working-bar h-8 w-2 shrink-0 animate-stripes rounded-full" aria-hidden="true" />
+              <span className="min-w-0 flex-1 text-[13px] font-semibold">Making your meme</span>
+              <span className="tabular font-mono text-[15px] font-semibold">{elapsedText}</span>
+            </>
+          ) : (
+            <>
+              <ReadyRing done={readyCount} total={inputsReady.length} />
+              <span className="min-w-0 flex-1 text-[13px] leading-tight">
+                <span className="block font-bold">{allReady ? 'Ready to generate' : `${readyCount} of ${inputsReady.length} inputs in`}</span>
+                {!allReady && <span className="block truncate text-muted">Needs {missing[0]}</span>}
+              </span>
+              <Button type="submit" variant="primary" size="sm" disabled={!allReady} leftIcon={<Wand2 className="h-4 w-4" />}>
+                Generate
+              </Button>
+            </>
+          )}
         </div>
+        <div className="h-16 lg:hidden" aria-hidden="true" />
       </form>
     </div>
   );
 }
-
