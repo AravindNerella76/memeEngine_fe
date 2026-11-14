@@ -189,7 +189,7 @@ function Sessions({ reloadKey }) {
 }
 
 export default function AccountSection() {
-  const { username, authEnabled } = useAuth();
+  const { username, authEnabled, staticLogin, staticWeak } = useAuth();
   const [reloadKey, setReloadKey] = useState(0);
 
   if (!authEnabled) {
@@ -212,7 +212,20 @@ export default function AccountSection() {
           <p className="mt-0.5 text-[13px] text-muted">The owner of this studio. There is one account; it is created from the command line.</p>
         </div>
       </Card>
-      <ChangePassword onChanged={() => setReloadKey(k => k + 1)} />
+      {staticLogin ? (
+        <Alert tone={staticWeak ? 'warn' : 'info'} icon={KeyRound} title="This login is set by the server, not here">
+          <p>
+            The username and password come from the server's settings (<code className="font-mono text-[12px]">AUTH_STATIC_USERNAME</code> and <code className="font-mono text-[12px]">AUTH_STATIC_PASSWORD</code>), so they can't be changed from this page.
+            {staticWeak && ' The current password is easy to guess: anyone who finds this address can sign in.'}
+          </p>
+          <p className="mt-2">
+            <strong>To change it:</strong> edit those two settings and restart the server. Everyone is signed out and the old password stops working.
+            <strong> To use a private password instead:</strong> remove both settings and run <code className="font-mono text-[12px]">npm run auth:create-owner</code>.
+          </p>
+        </Alert>
+      ) : (
+        <ChangePassword onChanged={() => setReloadKey(k => k + 1)} />
+      )}
       <Sessions reloadKey={reloadKey} />
       <p className="px-1 text-[12.5px] leading-relaxed text-muted">
         Forgot the password? On the server computer, in <code className="font-mono text-[12px]">memeEngine_be</code>, run <code className="font-mono text-[12px]">npm run auth:reset-password</code>. It also signs out every device.

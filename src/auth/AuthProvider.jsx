@@ -30,21 +30,22 @@ const PRIVATE_SESSION_KEYS = ['meme_engine_settings_draft', 'meme_engine_setting
  *   anon     signed out
  *   setup    no owner account exists yet (created from the command line)
  *   offline  the server cannot be reached
+ * `staticLogin` / `staticWeak`: the server uses a fixed login from its settings (and it is easy to guess).
  * `expired` is true when a signed-in session ended while the app was open: the studio stays on screen
  * (nothing is lost) and a sign-in dialog appears on top.
  */
 export function AuthProvider({ children }) {
-  const [state, setState] = useState({ status: 'loading', username: null, authEnabled: true, expired: false });
+  const [state, setState] = useState({ status: 'loading', username: null, authEnabled: true, expired: false, staticLogin: false, staticWeak: false });
 
   const refresh = useCallback(async () => {
     try {
       const { res, data } = await authRequest('GET', '/api/auth/me');
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      if (data.authenticated) setState({ status: 'authed', username: data.username || null, authEnabled: data.authEnabled !== false, expired: false });
-      else setState({ status: data.setupRequired ? 'setup' : 'anon', username: null, authEnabled: true, expired: false });
+      if (data.authenticated) setState({ status: 'authed', username: data.username || null, authEnabled: data.authEnabled !== false, expired: false, staticLogin: Boolean(data.staticCredentials), staticWeak: Boolean(data.staticWeak) });
+      else setState({ status: data.setupRequired ? 'setup' : 'anon', username: null, authEnabled: true, expired: false, staticLogin: false, staticWeak: false });
     } catch {
       // keep the studio usable if we were already in it; otherwise show "cannot reach the server"
-      setState(s => (s.status === 'authed' ? s : { status: 'offline', username: null, authEnabled: true, expired: false }));
+      setState(s => (s.status === 'authed' ? s : { status: 'offline', username: null, authEnabled: true, expired: false, staticLogin: false, staticWeak: false }));
     }
   }, []);
 
@@ -68,7 +69,7 @@ export function AuthProvider({ children }) {
     }
     const { res, data } = out;
     if (res.ok) {
-      setState({ status: 'authed', username: data.username, authEnabled: true, expired: false });
+      setState({ status: 'authed', username: data.username, authEnabled: true, expired: false, staticLogin: Boolean(data.staticCredentials), staticWeak: Boolean(data.staticWeak) });
       return { ok: true };
     }
     return { ok: false, code: data.code || `http_${res.status}`, message: data.message || 'Could not sign in.', retryAfterSeconds: data.retryAfterSeconds };
@@ -85,7 +86,7 @@ export function AuthProvider({ children }) {
     } catch {
       /* storage unavailable */
     }
-    setState({ status: 'anon', username: null, authEnabled: true, expired: false });
+    setState({ status: 'anon', username: null, authEnabled: true, expired: false, staticLogin: false, staticWeak: false });
   }, []);
 
   const value = useMemo(() => ({ ...state, login, logout, refresh }), [state, login, logout, refresh]);

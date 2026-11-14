@@ -1,6 +1,6 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Routes, Route, NavLink, Navigate, useLocation, useNavigate } from 'react-router-dom';
-import { ExternalLink, Instagram, LayoutGrid, LogOut, MessageCircle, Palette, RefreshCw, SlidersHorizontal, Sparkles, Wand2, WifiOff } from 'lucide-react';
+import { ExternalLink, Instagram, KeyRound, LayoutGrid, LogOut, MessageCircle, Palette, RefreshCw, SlidersHorizontal, Sparkles, Wand2, WifiOff } from 'lucide-react';
 import { useAuth } from './auth/AuthProvider';
 import CreateMemeForm from './components/CreateMemeForm';
 import ViralAdaptationForm from './components/ViralAdaptationForm';
@@ -293,6 +293,41 @@ function BottomNav() {
   );
 }
 
+/** Reminder while the server uses a fixed, guessable login. Dismiss it for this visit; it returns at the next sign-in. */
+function StaticLoginBanner() {
+  const { staticLogin, staticWeak } = useAuth();
+  const [hidden, setHidden] = useState(() => {
+    try {
+      return sessionStorage.getItem('meme_engine_static_login_notice') === '1';
+    } catch {
+      return false;
+    }
+  });
+  if (!staticLogin || hidden) return null;
+  const dismiss = () => {
+    setHidden(true);
+    try {
+      sessionStorage.setItem('meme_engine_static_login_notice', '1');
+    } catch {
+      /* storage unavailable: it just comes back on reload */
+    }
+  };
+  return (
+    <div role="status" className="mb-6 flex flex-wrap items-center gap-3 rounded-md border border-warn/30 bg-warn-soft px-4 py-3 text-[13px] text-ink">
+      <KeyRound className="h-4 w-4 shrink-0 text-warn" aria-hidden="true" />
+      <p className="min-w-0 flex-1">
+        <strong className="font-bold">Temporary login.</strong> {staticWeak ? 'Its password is easy to guess, so anyone who finds this address can sign in and publish to Instagram.' : 'It is set in the server settings.'} Replace it before you share the link.
+      </p>
+      <NavLink to="/settings?section=account" className="font-semibold underline decoration-marker decoration-2 underline-offset-2 hover:decoration-ink">
+        How to change it
+      </NavLink>
+      <Button size="sm" variant="secondary" onClick={dismiss}>
+        Dismiss
+      </Button>
+    </div>
+  );
+}
+
 /** Shown only when the backend cannot be reached, so a blank gallery is never mistaken for "no memes". */
 function OfflineBanner() {
   const { phase, refresh } = useSystemStatus();
@@ -330,6 +365,7 @@ export default function App() {
       <div className="md:pl-[252px]">
         <main id="main" className="mx-auto w-full max-w-[1240px] px-4 pb-32 pt-6 sm:px-6 md:pb-16 md:pt-10 lg:px-10">
           <OfflineBanner />
+          <StaticLoginBanner />
           <div key={location.pathname} className="page-enter">
             <Routes>
               {/* Primary workflow: reference screenshot + reaction image + punchline */}
