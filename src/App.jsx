@@ -1,12 +1,13 @@
 import React, { useEffect, useState } from 'react';
 import { Routes, Route, NavLink, Navigate, useLocation, useNavigate } from 'react-router-dom';
-import { ExternalLink, Instagram, KeyRound, LayoutGrid, LogOut, MessageCircle, Palette, RefreshCw, SlidersHorizontal, Sparkles, Wand2, WifiOff } from 'lucide-react';
+import { ExternalLink, Instagram, KeyRound, LayoutGrid, LayoutTemplate, LogOut, MessageCircle, Palette, RefreshCw, SlidersHorizontal, Sparkles, Wand2, WifiOff } from 'lucide-react';
 import { useAuth } from './auth/AuthProvider';
 import CreateMemeForm from './components/CreateMemeForm';
 import ViralAdaptationForm from './components/ViralAdaptationForm';
 import MemeResultView from './components/MemeResultView';
 import MyMemesGallery from './components/MyMemesGallery';
 import StyleGuideView from './components/StyleGuideView';
+import LayoutsPage from './components/LayoutsPage';
 import SettingsPage from './components/settings/SettingsPage';
 import { BRAND } from './brand';
 import { API_BASE } from './api';
@@ -24,6 +25,7 @@ const NAV_GROUPS = [
     label: 'Library',
     items: [
       { path: '/memes', label: 'My Memes', icon: LayoutGrid },
+      { path: '/layouts', label: 'Layouts', icon: LayoutTemplate },
       { path: '/style-guide', label: 'Style Guide', icon: Palette }
     ]
   },
@@ -35,6 +37,7 @@ const TAB_ITEMS = [
   { path: '/', label: 'Adapt', icon: Sparkles, end: true },
   { path: '/memes', label: 'Memes', icon: LayoutGrid },
   { path: '/create', label: 'Create', icon: Wand2 },
+  { path: '/layouts', label: 'Layouts', icon: LayoutTemplate },
   { path: '/style-guide', label: 'Styles', icon: Palette },
   { path: '/settings', label: 'Settings', icon: SlidersHorizontal }
 ];
@@ -125,8 +128,24 @@ function StatusLine({ tone, children }) {
   );
 }
 
+/** The WhatsApp token is the one thing that expires by itself: say so before the bot goes quiet. */
+function whatsappNotice(wa) {
+  if (!wa) return null;
+  if (wa.problem === 'expired') return { tone: 'bad', text: 'WhatsApp token expired' };
+  if (wa.problem === 'rejected') return { tone: 'bad', text: 'WhatsApp rejected the token' };
+  if (wa.problem === 'unreadable') return { tone: 'bad', text: 'WhatsApp token unreadable' };
+  if (wa.problem === 'missing') return { tone: 'warn', text: 'WhatsApp token not set' };
+  if (wa.problem === 'incomplete') return { tone: 'warn', text: 'WhatsApp setup incomplete' };
+  if (wa.expiresAt) {
+    const left = new Date(wa.expiresAt).getTime() - Date.now();
+    if (left > 0 && left < 24 * 3600 * 1000) return { tone: 'warn', text: `WhatsApp token ends in ${Math.max(1, Math.round(left / 3600000))} h` };
+  }
+  return null;
+}
+
 function EngineStatus() {
-  const { phase, providersOn, visionReady, refresh } = useSystemStatus();
+  const { phase, providersOn, visionReady, refresh, data } = useSystemStatus();
+  const wa = whatsappNotice(data?.whatsapp);
   return (
     <div className="rounded-md border border-white/10 bg-white/[0.05] p-3.5" role="status" aria-live="polite">
       <div className="mb-2.5 flex items-center justify-between">
@@ -147,6 +166,13 @@ function EngineStatus() {
               {providersOn} image source{providersOn === 1 ? '' : 's'} on
             </StatusLine>
             <StatusLine tone={visionReady === false ? 'bad' : 'ok'}>{visionReady === false ? 'AI vision not set up' : 'AI vision ready'}</StatusLine>
+            {wa && (
+              <StatusLine tone={wa.tone}>
+                <NavLink to="/settings?section=whatsapp" className="font-semibold underline decoration-marker decoration-2 underline-offset-2 hover:text-white">
+                  {wa.text}
+                </NavLink>
+              </StatusLine>
+            )}
           </>
         )}
       </ul>
@@ -378,6 +404,9 @@ export default function App() {
 
               {/* Manual creation from your own images and texts */}
               <Route path="/create" element={<CreateMemeForm onGenerated={meme => navigate(`/meme/${meme.memeId || meme.id}`, { state: { meme, from: 'create' } })} />} />
+
+              {/* Saved meme layouts: learned from example memes, used in manual creation and on WhatsApp */}
+              <Route path="/layouts" element={<LayoutsPage />} />
 
               {/* Style guide: five house-style reference layouts */}
               <Route path="/style-guide" element={<StyleGuideView />} />

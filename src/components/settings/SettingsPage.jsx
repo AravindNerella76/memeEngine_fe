@@ -1,10 +1,11 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Check, Gauge, Globe, Image, Instagram, KeyRound, LayoutTemplate, Palette, RotateCcw, Save, Type, Undo2, WifiOff } from 'lucide-react';
+import { Check, Gauge, Globe, Image, Instagram, KeyRound, LayoutTemplate, MessageCircle, Palette, RotateCcw, Save, Type, Undo2, WifiOff } from 'lucide-react';
 import { diff, ROLE_SAMPLE, SECTION_INFO, serverErrorsByPath, settingsApi, setAt, validate } from './settingsModel';
 import SettingsPreview from './SettingsPreview';
 import { AdvancedSection, CanvasSection, DiscoverySection, EffectsSection, ImageSection, TypographySection } from './sections';
 import InstagramSection from './InstagramSection';
+import WhatsAppSection from './WhatsAppSection';
 import AccountSection from './AccountSection';
 import { Alert, Badge, Button, EmptyState, PageHeader, Skeleton, cn, useConfirm, useDocumentTitle, useToast } from '../../ui';
 
@@ -15,6 +16,7 @@ const SECTIONS = [
   { id: 'imageProcessing', icon: Image, preview: true },
   { id: 'discovery', icon: Globe, preview: false },
   { id: 'instagram', icon: Instagram, preview: false },
+  { id: 'whatsapp', icon: MessageCircle, preview: false },
   { id: 'advanced', icon: Gauge, preview: false },
   { id: 'account', icon: KeyRound, preview: false }
 ];
@@ -220,7 +222,7 @@ export default function SettingsPage() {
   const sectionProps = { draft, defaults: meta.defaults, schema: meta.schema, fonts: meta.fonts, errors, set, role, setRole, meta: { ...meta, savedSettings: saved } };
   const changedSections = new Set(touched(patch));
   const sectionErrors = id => Object.keys(clientErrors).some(k => k.startsWith(`${id}.`));
-  const SectionBody = { typography: TypographySection, effects: EffectsSection, canvas: CanvasSection, imageProcessing: ImageSection, discovery: DiscoverySection, instagram: InstagramSection, advanced: AdvancedSection, account: AccountSection }[section];
+  const SectionBody = { typography: TypographySection, effects: EffectsSection, canvas: CanvasSection, imageProcessing: ImageSection, discovery: DiscoverySection, instagram: InstagramSection, whatsapp: WhatsAppSection, advanced: AdvancedSection, account: AccountSection }[section];
 
   return (
     <div className="pb-32">
@@ -292,7 +294,7 @@ export default function SettingsPage() {
               <h2 className="text-[24px] font-extrabold leading-tight tracking-[-0.02em]">{info.title}</h2>
               <p className="mt-1 max-w-2xl text-[13.5px] leading-relaxed text-muted">{info.description}</p>
             </div>
-            {section !== 'instagram' && section !== 'account' && (
+            {section !== 'instagram' && section !== 'whatsapp' && section !== 'account' && (
               <Button variant="secondary" size="sm" onClick={() => resetSection(section)} leftIcon={<RotateCcw className="h-3.5 w-3.5" />} className="shrink-0">
                 Defaults for this section
               </Button>

@@ -25,6 +25,14 @@ export const settingsApi = {
   preview: (body, signal) => request('POST', '/api/settings/preview', body, signal)
 };
 
+export const whatsappApi = {
+  /** live=true also asks Meta whether the token works and when it expires. */
+  status: live => request('GET', `/api/whatsapp/status${live ? '?check=1' : ''}`),
+  save: body => request('PUT', '/api/whatsapp/credentials', body),
+  /** Removes one saved value (accessToken, phoneNumberId, verifyToken, appSecret, allowedPhone); the server setting applies again. */
+  clear: field => request('DELETE', `/api/whatsapp/credentials${field ? `?field=${encodeURIComponent(field)}` : ''}`)
+};
+
 export const instagramApi = {
   getAuthUrl: () => request('GET', '/api/instagram/auth/url'),
   getAccount: () => request('GET', '/api/instagram/account'),
@@ -138,6 +146,7 @@ export const SECTION_INFO = {
   imageProcessing: { title: 'Image Processing', short: 'Images', description: 'How pictures are fitted, cropped, checked and saved. Pictures are never stretched.' },
   discovery: { title: 'Image Discovery', short: 'Discovery', description: 'Where subject pictures are searched and how strictly they are checked. API keys and monthly limits stay in the backend .env file.' },
   instagram: { title: 'Instagram Integration', short: 'Instagram', description: 'Connect @kanyaraasi_memes via Meta Unified Login to publish memes directly from the studio.' },
+  whatsapp: { title: 'WhatsApp Bot', short: 'WhatsApp', description: 'Every setting the WhatsApp bot needs: access token, phone number ID, webhook verify token, app secret and the allowed phone. Change any of them here, for example a new token when the old one expires; no redeploy needed.' },
   advanced: { title: 'Advanced & Performance', short: 'Advanced', description: 'Timeouts, retries, limits and diagnostics of the generation pipeline.' },
   account: { title: 'Account & Security', short: 'Account', description: 'Your sign-in: change the password and see which devices are signed in.' },
 };
