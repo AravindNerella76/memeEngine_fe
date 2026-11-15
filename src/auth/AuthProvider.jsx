@@ -69,6 +69,24 @@ export function AuthProvider({ children }) {
     }
     const { res, data } = out;
     if (res.ok) {
+      // The server said yes. Make sure this browser really kept the session: when the app and the server
+      // sit on different web addresses (e.g. vercel.app and onrender.com) the browser drops the cookie,
+      // and the next request would silently ask for the sign-in again, in a loop.
+      let kept = false;
+      try {
+        const check = await authRequest('GET', '/api/auth/me');
+        kept = check.res.ok && check.data?.authenticated === true;
+      } catch {
+        kept = false;
+      }
+      if (!kept) {
+        return {
+          ok: false,
+          code: 'session_not_kept',
+          message:
+            'The server accepted the sign-in, but this browser did not keep it. This happens when the app and the server are on different web addresses (for example vercel.app and onrender.com), because browsers do not send the sign-in cookie between sites. The app address must forward /api to the server so both use one address.'
+        };
+      }
       setState({ status: 'authed', username: data.username, authEnabled: true, expired: false, staticLogin: Boolean(data.staticCredentials), staticWeak: Boolean(data.staticWeak) });
       return { ok: true };
     }

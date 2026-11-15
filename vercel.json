@@ -1,9 +1,16 @@
 {
   "rewrites": [
     {
+      "source": "/api/:path*",
+      "destination": "https://memeengine-be.onrender.com/api/:path*"
+    },
+    {
+      "source": "/output/:path*",
+      "destination": "https://memeengine-be.onrender.com/output/:path*"
+    },
+    {
       "source": "/(.*)",
       "destination": "/index.html"
     }
   ]
 }
-
