@@ -165,7 +165,7 @@ function EngineStatus() {
             <StatusLine tone={providersOn > 0 ? 'ok' : 'bad'}>
               {providersOn} image source{providersOn === 1 ? '' : 's'} on
             </StatusLine>
-            <StatusLine tone={visionReady === false ? 'bad' : 'ok'}>{visionReady === false ? 'AI vision not set up' : 'AI vision ready'}</StatusLine>
+            <StatusLine tone={visionReady === false ? 'bad' : 'ok'}>{visionReady === false ? (data?.visionCli?.backend === 'gemini-api' ? 'Gemini API key missing' : 'AI vision not set up') : data?.visionCli?.backend === 'gemini-api' ? 'AI vision ready · Gemini API' : 'AI vision ready'}</StatusLine>
             {wa && (
               <StatusLine tone={wa.tone}>
                 <NavLink to="/settings?section=whatsapp" className="font-semibold underline decoration-marker decoration-2 underline-offset-2 hover:text-white">
