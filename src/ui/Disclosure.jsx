@@ -6,14 +6,22 @@ import { cn } from './cn';
  * Collapsible row. The content stays mounted while closed (so state inside it, such as an analysed
  * reference, is kept) and is made inert so it cannot be tabbed into.
  */
-export default function Disclosure({ title, summary, icon: Icon, badge, defaultOpen = false, children, className }) {
-  const [open, setOpen] = useState(defaultOpen);
-  const id = useId();
+export default function Disclosure({ title, summary, icon: Icon, badge, defaultOpen = false, open: controlledOpen, onOpenChange, children, className, id: customId }) {
+  const [internalOpen, setInternalOpen] = useState(defaultOpen);
+  const open = controlledOpen !== undefined ? controlledOpen : internalOpen;
+  const generatedId = useId();
+  const id = customId || generatedId;
+
+  const toggle = () => {
+    const next = !open;
+    setInternalOpen(next);
+    onOpenChange?.(next);
+  };
   return (
     <div className={cn('border-b border-line last:border-b-0', className)}>
       <button
         type="button"
-        onClick={() => setOpen(o => !o)}
+        onClick={toggle}
         aria-expanded={open}
         aria-controls={id}
         className="group flex w-full items-center gap-3 py-3.5 text-left"

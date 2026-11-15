@@ -248,6 +248,7 @@ export default function ViralAdaptationForm({ onGenerated }) {
   const [now, setNow] = useState(Date.now());
   const [error, setError] = useState(null);
   const [errorDetails, setErrorDetails] = useState(null);
+  const [picturesOpen, setPicturesOpen] = useState(false);
   const errorRef = useRef(null);
   const mounted = useRef(true);
   useEffect(() => {
@@ -513,9 +514,24 @@ export default function ViralAdaptationForm({ onGenerated }) {
               </ul>
             )}
           </div>
-          <Button size="sm" variant="secondary" onClick={() => setError(null)}>
-            Dismiss
-          </Button>
+          <div className="mt-3 flex flex-wrap gap-2">
+            <Button
+              size="sm"
+              variant="primary"
+              className="bg-gradient-to-r from-[#1e6f04] to-[#259800] text-white font-bold shadow-xs hover:shadow-md"
+              onClick={() => {
+                setPicturesOpen(true);
+                setTimeout(() => {
+                  document.getElementById('choose-pictures-section')?.scrollIntoView({ behavior: 'smooth' });
+                }, 50);
+              }}
+            >
+              📸 Upload Your Own Picture for this Slot
+            </Button>
+            <Button size="sm" variant="secondary" onClick={() => setError(null)}>
+              Dismiss
+            </Button>
+          </div>
         </div>
       )}
 
@@ -601,6 +617,9 @@ export default function ViralAdaptationForm({ onGenerated }) {
           <p className="px-1 pt-1 font-mono text-micro uppercase text-muted">Fine-tune · all optional</p>
           <Card pad="none" className="!mt-2 px-5 sm:px-6">
             <Disclosure
+              id="choose-pictures-section"
+              open={picturesOpen}
+              onOpenChange={setPicturesOpen}
               icon={ImagePlus}
               title="Choose your own pictures"
               summary={customPictures ? `${customPictures} picture${customPictures === 1 ? '' : 's'} chosen by you` : 'The AI picks and verifies every image by default'}
