@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { Check, CheckCircle2, Clock, Copy, Eye, EyeOff, ExternalLink, KeyRound, MessageCircle, RefreshCw, ShieldCheck, Shuffle, Undo2 } from 'lucide-react';
+import { Check, CheckCircle2, Clock, Copy, Eye, EyeOff, ExternalLink, KeyRound, MessageCircle, RefreshCw, ShieldCheck, Shuffle, Undo2, X } from 'lucide-react';
 import { whatsappApi } from './settingsModel';
 import { Alert, Badge, Button, Card, Disclosure, Input, Label, Skeleton, cn, useConfirm, useSystemStatus, useToast } from '../../ui';
 
@@ -44,7 +44,17 @@ const FIELDS = [
   },
   {
     group: 'Who can use the bot',
-    items: [{ id: 'allowedPhone', label: 'Allowed phone number', mono: true, placeholder: 'e.g. 919876543210', inputMode: 'tel', hint: 'Only this number can talk to the bot. Digits with the country code; spaces and + are ignored.' }]
+    items: [
+      {
+        id: 'allowedPhone',
+        kind: 'phones',
+        label: 'Allowed phone numbers',
+        mono: true,
+        placeholder: 'e.g. 919876543210',
+        inputMode: 'tel',
+        hint: 'Only these numbers can talk to the bot. Digits with the country code; spaces and + are ignored. Add one at a time (press Enter), or paste several separated by commas. Up to 10.'
+      }
+    ]
   }
 ];
 
@@ -55,6 +65,124 @@ function SourceBadge({ field }) {
   if (field.source === 'app') return <Badge tone="ok" size="sm" dot>Saved here{field.hint ? ` · ${field.hint}` : ''}</Badge>;
   if (field.source === 'server') return <Badge tone="neutral" size="sm">Server setting{field.hint ? ` · ${field.hint}` : ''}</Badge>;
   return <Badge tone="warn" size="sm">Not set</Badge>;
+}
+
+const PHONE_MIN = 8;
+const PHONE_MAX = 15;
+const PHONE_LIMIT = 10;
+
+/**
+ * Several phone numbers as chips. The value is the same comma-separated string the server stores
+ * ("919347708120,918885550123"), so saving, comparing and "use server value" work as for any other box.
+ * Enter or a comma adds the typed number; pasting a list adds them all; Backspace on an empty box removes the last.
+ */
+function PhoneListInput({ id, value, onChange, disabled }) {
+  const numbers = String(value || '').split(',').map(s => s.trim()).filter(Boolean);
+  const [draft, setDraft] = useState('');
+  const [problem, setProblem] = useState(null);
+
+  /** Adds every valid number in `text`; anything that is not a full number stays in the box with a message. */
+  const commit = text => {
+    const pieces = String(text).split(/[,;\n\r]+/).map(s => s.trim()).filter(Boolean);
+    if (!pieces.length) {
+      setDraft('');
+      setProblem(null);
+      return;
+    }
+    const next = [...numbers];
+    const bad = [];
+    for (const p of pieces) {
+      const digits = p.replace(/\D/g, '');
+      if (!digits) continue;
+      if (digits.length < PHONE_MIN || digits.length > PHONE_MAX) bad.push(p);
+      else if (!next.includes(digits)) next.push(digits);
+    }
+    if (next.length > PHONE_LIMIT) {
+      setProblem(`At most ${PHONE_LIMIT} numbers.`);
+      return;
+    }
+    if (next.length !== numbers.length) onChange(next.join(','));
+    if (bad.length) {
+      setDraft(bad.join(', '));
+      setProblem(`${bad.join(', ')} ${bad.length === 1 ? "isn't a full number" : "aren't full numbers"}: use ${PHONE_MIN}-${PHONE_MAX} digits with the country code.`);
+    } else {
+      setDraft('');
+      setProblem(null);
+    }
+  };
+
+  const remove = n => {
+    onChange(numbers.filter(x => x !== n).join(','));
+    setProblem(null);
+  };
+
+  return (
+    <div className="sm:max-w-xl">
+      <div
+        className={cn(
+          'field flex flex-wrap items-center gap-2 !p-2',
+          'focus-within:border-ink focus-within:shadow-[0_0_0_3px_rgb(var(--marker)/0.6)]',
+          problem && 'border-bad',
+          disabled && 'pointer-events-none opacity-60'
+        )}
+      >
+        {numbers.map(n => (
+          <span key={n} className="inline-flex items-center gap-1 rounded-full border border-ink bg-marker-soft py-0.5 pl-3 pr-1 font-mono text-[13px] font-medium">
+            +{n}
+            <button
+              type="button"
+              onClick={() => remove(n)}
+              disabled={disabled}
+              aria-label={`Remove +${n}`}
+              className="grid h-6 w-6 place-items-center rounded-full text-ink-3 transition-colors hover:bg-ink hover:text-paper"
+            >
+              <X className="h-3.5 w-3.5" aria-hidden="true" />
+            </button>
+          </span>
+        ))}
+        <input
+          id={id}
+          type="text"
+          value={draft}
+          disabled={disabled}
+          inputMode="tel"
+          autoComplete="off"
+          spellCheck={false}
+          placeholder={numbers.length ? 'Add another number' : 'e.g. 919876543210'}
+          aria-invalid={problem ? true : undefined}
+          aria-describedby={`${id}-help`}
+          className="min-w-[11rem] flex-1 bg-transparent px-1.5 py-1 font-mono text-[13px] text-ink outline-none placeholder:text-faint"
+          onChange={e => {
+            const v = e.target.value;
+            if (/[,;\n]$/.test(v)) commit(v);
+            else {
+              setDraft(v);
+              if (problem) setProblem(null);
+            }
+          }}
+          onKeyDown={e => {
+            if (e.key === 'Enter' && draft.trim()) {
+              e.preventDefault(); // Enter adds the number; it must not submit the whole form
+              commit(draft);
+            } else if (e.key === 'Backspace' && !draft && numbers.length) {
+              remove(numbers[numbers.length - 1]);
+            }
+          }}
+          onPaste={e => {
+            const text = e.clipboardData?.getData('text');
+            if (text && /[,;\n]/.test(text)) {
+              e.preventDefault();
+              commit(`${draft},${text}`);
+            }
+          }}
+          onBlur={() => draft.trim() && commit(draft)}
+        />
+      </div>
+      <p id={`${id}-help`} className={cn('mt-1.5 text-[12px]', problem ? 'font-medium text-bad' : numbers.length ? 'text-muted' : 'text-warn')} role={problem ? 'alert' : undefined}>
+        {problem || (numbers.length ? `${numbers.length} of ${PHONE_LIMIT} numbers` : 'No numbers yet: the bot ignores everyone until you add one.')}
+      </p>
+    </div>
+  );
 }
 
 function SettingField({ def, status, value, onChange, disabled, onUseServer, onCopy }) {
@@ -78,6 +206,9 @@ function SettingField({ def, status, value, onChange, disabled, onUseServer, onC
       >
         {def.label}
       </Label>
+      {def.kind === 'phones' ? (
+        <PhoneListInput id={id} value={value} onChange={v => onChange(def.id, v)} disabled={disabled} />
+      ) : (
       <div className="relative">
         <input
           id={id}
@@ -106,6 +237,7 @@ function SettingField({ def, status, value, onChange, disabled, onUseServer, onC
           </div>
         )}
       </div>
+      )}
       {def.generate && (
         <div className="mt-2">
           <Button
@@ -138,7 +270,7 @@ function Fact({ icon: Icon, label, children, tone }) {
   );
 }
 
-const LABEL = { accessToken: 'access token', phoneNumberId: 'phone number ID', verifyToken: 'verify token', appSecret: 'app secret', allowedPhone: 'allowed phone number' };
+const LABEL = { accessToken: 'access token', phoneNumberId: 'phone number ID', verifyToken: 'verify token', appSecret: 'app secret', allowedPhone: 'allowed phone numbers' };
 
 export default function WhatsAppSection() {
   const toast = useToast();
@@ -432,7 +564,7 @@ export default function WhatsAppSection() {
               <strong>Verify token</strong>: you choose it. Press Generate above, save it here, then paste the same value in <strong>WhatsApp &gt; Configuration</strong> together with the callback URL.
             </li>
             <li>
-              <strong>Allowed phone number</strong>: your own WhatsApp number with the country code. On a test number it must also be in Meta's list of recipient numbers.
+              <strong>Allowed phone numbers</strong>: the WhatsApp numbers that may use the bot (yours, and anyone you want to give access), each with the country code. Each person has their own conversation. On a Meta <em>test</em> number, Meta only delivers to numbers in its recipient list (<strong>WhatsApp &gt; API Setup</strong>, up to 5), so add each one there too.
             </li>
           </ol>
         </Disclosure>
