@@ -1,11 +1,13 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
+import { markReactionUsed } from '../lib/reactionLibrary';
+import ReactionPicker from './reactions/ReactionPicker';
 import { ArrowLeft, ArrowRight, Check, Film, Plus, Sparkles, Trash2, Upload, Wand2, X } from 'lucide-react';
 import { SAMPLE_TEMPLATES } from './SampleTemplates';
 import { API_BASE, apiFetch } from '../api';
 import { cachedJSON } from '../lib/queryCache';
 import { ColorField, NumberField, Segmented, SelectField } from './settings/controls';
-import { Alert, Badge, Button, Card, Field, ImageDrop, Input, PageHeader, Textarea, cn, isImageFile, useDocumentTitle, useImageSlot, useAvailability, useToast } from '../ui';
+import { Alert, Badge, Button, Card, Field, ImageDrop, Input, PageHeader, Textarea, cn, isImageFile, makeImageItem, useDocumentTitle, useImageSlot, useAvailability, useToast } from '../ui';
 
 const MEME_TYPES = [
   { id: 'facts_collage', title: 'Facts / Collage', desc: 'Grid arrangement with individual cell labels' },
@@ -295,6 +297,7 @@ export default function CreateMemeForm({ onGenerated }) {
       // Append reaction image
       if (reactionFile && reactionFile.file) {
         formData.append('reactionImage', reactionFile.file);
+        if (reactionFile.libraryId) markReactionUsed(reactionFile.libraryId);
       }
 
       const payload = {
@@ -548,6 +551,7 @@ export default function CreateMemeForm({ onGenerated }) {
             thumbClass="h-[72px] w-32"
             note="Goes in the bottom punchline section."
           />
+          <ReactionPicker disabled={loading} onPick={({ file, image }) => setReactionFile({ ...makeImageItem(file), libraryId: image.imageId })} />
         </Step>
 
         {/* 4. Meme type */}

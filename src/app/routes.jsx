@@ -1,5 +1,5 @@
 import { lazy } from 'react';
-import { LayoutGrid, LayoutTemplate, Palette, SlidersHorizontal, Sparkles, Wand2 } from 'lucide-react';
+import { LayoutGrid, LayoutTemplate, Palette, SlidersHorizontal, Smile, Sparkles, Wand2 } from 'lucide-react';
 // The landing page ships with the app (see `eagerPage`); every other page is downloaded when first needed.
 import ViralAdaptationForm from '../components/ViralAdaptationForm';
 import { memeListPath } from '../lib/memeList';
@@ -104,6 +104,18 @@ export const PAGES = [
     component: lazyPage(() => import('../components/MyMemesGallery')),
     props: navigate => ({ onSelectMeme: openMeme(navigate, 'history') }),
     prefetch: () => warm(memeListPath(), { ttl: 4_000 })
+  },
+  {
+    id: 'reactions',
+    path: '/reactions',
+    label: 'Reactions',
+    short: 'Reactions',
+    icon: Smile,
+    group: 'Library',
+    mobile: false,
+    keywords: 'reaction pictures library folders emotion shocking sad praise brahmi faces import phone',
+    component: lazyPage(() => import('../components/reactions/ReactionsPage')),
+    prefetch: () => warm('/api/reactions/categories', { ttl: 10_000 })
   },
   {
     id: 'layouts',

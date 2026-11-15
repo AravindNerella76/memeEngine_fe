@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import {
   AlertCircle,
   Check,
@@ -18,6 +19,8 @@ import {
 import { API_BASE, apiFetch } from '../api';
 import { cachedJSON } from '../lib/queryCache';
 import { MOD_KEY } from '../app/platform';
+import { markReactionUsed, reactionAsFile } from '../lib/reactionLibrary';
+import ReactionPicker from './reactions/ReactionPicker';
 import ImageSourcesStatus from './ImageSourcesStatus';
 import ViralImageChoices from './imageChoice/ViralImageChoices';
 import PunchlinePreview from './PunchlinePreview';
@@ -231,7 +234,24 @@ export default function ViralAdaptationForm({ onGenerated }) {
 
   // The three core inputs
   const [referenceFile, setReferenceFile] = useImageSlot(); // { file, preview, name }
-  const [reactionFile, setReactionFile] = useImageSlot(); // { file, preview, name }
+  const [reactionFile, setReactionFile] = useImageSlot(); // { file, preview, name, libraryId? }
+
+  // "Use in a meme" on the Reactions page lands here with the picture's id: put it in the reaction slot
+  const location = useLocation();
+  const navigate = useNavigate();
+  useEffect(() => {
+    const id = location.state?.reactionId;
+    if (!id) return undefined;
+    let live = true;
+    navigate(location.pathname, { replace: true, state: null }); // so a reload or Back does not repeat it
+    reactionAsFile({ imageId: id, category: 'reaction' })
+      .then(file => live && setReactionFile({ ...makeImageItem(file), libraryId: id }))
+      .catch(err => toast.error(err.message));
+    return () => {
+      live = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const [punchline, setPunchline] = useState('');
 
   // Optional context & preferences
@@ -413,6 +433,7 @@ export default function ViralAdaptationForm({ onGenerated }) {
         formData.append('referenceImage', referenceFile.file);
       }
       formData.append('reactionImage', reactionFile.file);
+      if (reactionFile.libraryId) markReactionUsed(reactionFile.libraryId); // the quick-pick row learns which ones you use
       formData.append('punchline', punchline.trim());
       if (reactionContext.trim()) {
         formData.append('reactionContext', reactionContext.trim());
@@ -613,6 +634,7 @@ export default function ViralAdaptationForm({ onGenerated }) {
               thumbClass="h-[72px] w-32"
               note="Goes in the bottom reaction section."
             />
+            <ReactionPicker disabled={loading} onPick={({ file, image }) => setReactionFile({ ...makeImageItem(file), libraryId: image.imageId })} />
           </Step>
 
           <Step
