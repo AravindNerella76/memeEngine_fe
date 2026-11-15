@@ -16,6 +16,8 @@ import {
   Wand2
 } from 'lucide-react';
 import { API_BASE, apiFetch } from '../api';
+import { cachedJSON } from '../lib/queryCache';
+import { MOD_KEY } from '../app/platform';
 import ImageSourcesStatus from './ImageSourcesStatus';
 import ViralImageChoices from './imageChoice/ViralImageChoices';
 import PunchlinePreview from './PunchlinePreview';
@@ -25,7 +27,10 @@ import {
   Card,
   Chips,
   Disclosure,
+  Elapsed,
+  ElapsedTitle,
   Field,
+  Greeting,
   ImageDrop,
   Input,
   PageHeader,
@@ -33,6 +38,7 @@ import {
   cn,
   isImageFile,
   makeImageItem,
+  useAvailability,
   useBusyGuard,
   useDocumentTitle,
   useImageSlot,
@@ -134,8 +140,33 @@ function ReadyRing({ done, total }) {
   );
 }
 
+// Shown one at a time, while the meme is being made. Each is true of this app; keep them short and useful.
+const WAIT_TIPS = [
+  'Your punchline is never rewritten. It goes onto the meme exactly as you typed it.',
+  'Every picture is checked against the reference before it is used, so a wrong face is rejected, not guessed.',
+  'You can leave this page. The meme keeps being made and lands in My Memes.',
+  `Press ${MOD_KEY} K from anywhere to jump to a page, a recent meme or a setting.`,
+  'Each meme keeps its own copy of the style, so changing Settings never alters an old meme.',
+  'Paste a screenshot with ' + MOD_KEY + ' V anywhere on this page to fill the next empty slot.'
+];
+
+/** One tip at a time, changing every few seconds. Own state: the form above never re-renders for it. */
+function WaitTip() {
+  const [i, setI] = useState(() => Math.floor(Math.random() * WAIT_TIPS.length));
+  useEffect(() => {
+    const t = setInterval(() => setI(n => (n + 1) % WAIT_TIPS.length), 9000);
+    return () => clearInterval(t);
+  }, []);
+  return (
+    <p key={i} className="mt-4 animate-fade-in text-[13px] leading-snug text-paper/80">
+      <span className="mr-2 font-mono text-micro uppercase text-marker">Tip</span>
+      {WAIT_TIPS[i]}
+    </p>
+  );
+}
+
 /** Live timeline shown while the server works (2–4 minutes). */
-function Progress({ step, elapsedText }) {
+function Progress({ step, startedAt }) {
   return (
     <Card tone="stage" pad="none" className="overflow-hidden animate-pop" role="status" aria-live="polite">
       <div className="working-bar h-2 animate-stripes" aria-hidden="true" />
@@ -146,7 +177,9 @@ function Progress({ step, elapsedText }) {
             <h2 className="mt-1 text-[22px] font-extrabold leading-tight text-white">Making your meme</h2>
           </div>
           <div className="text-right" role="timer" aria-live="off">
-            <p className="tabular font-mono text-[30px] font-semibold leading-none text-marker">{elapsedText}</p>
+            <p className="tabular font-mono text-[30px] font-semibold leading-none text-marker">
+              <Elapsed since={startedAt} />
+            </p>
             <p className="mt-1 text-[12px] text-paper/55">usually 2–4 min</p>
           </div>
         </div>
@@ -178,10 +211,15 @@ function Progress({ step, elapsedText }) {
           })}
         </ol>
 
-        <p className="mt-5 flex items-start gap-2 border-t border-white/10 pt-4 text-[12.5px] leading-snug text-paper/60">
-          <Clock className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />
-          Keep this tab open. Steps are estimated from typical timing. The result opens by itself when it is ready.
-        </p>
+        <div className="mt-5 border-t border-white/10 pt-4">
+          <p className="flex items-start gap-2 text-[12.5px] leading-snug text-paper/60">
+            <Clock className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+            Keep this tab open. Steps are estimated from typical timing. The result opens by itself when it is ready.
+          </p>
+          <div aria-hidden="true">
+            <WaitTip />
+          </div>
+        </div>
       </div>
     </Card>
   );
@@ -189,6 +227,7 @@ function Progress({ step, elapsedText }) {
 
 export default function ViralAdaptationForm({ onGenerated }) {
   const toast = useToast();
+  const net = useAvailability({ internet: true }); // generating uses the AI and the internet
 
   // The three core inputs
   const [referenceFile, setReferenceFile] = useImageSlot(); // { file, preview, name }
@@ -204,8 +243,8 @@ export default function ViralAdaptationForm({ onGenerated }) {
   const [punchStyle, setPunchStyle] = useState(null);
   useEffect(() => {
     let alive = true;
-    apiFetch(`${API_BASE}/api/settings`)
-      .then(r => (r.ok ? r.json() : null))
+    cachedJSON('/api/settings', { ttl: 60_000 })
+      .catch(() => null)
       .then(j => {
         if (!alive || !j?.settings) return;
         const s = j.settings;
@@ -245,7 +284,6 @@ export default function ViralAdaptationForm({ onGenerated }) {
   const [sampleLoading, setSampleLoading] = useState(false);
   const [progressStep, setProgressStep] = useState(0);
   const [startedAt, setStartedAt] = useState(null);
-  const [now, setNow] = useState(Date.now());
   const [error, setError] = useState(null);
   const [errorDetails, setErrorDetails] = useState(null);
   const [picturesOpen, setPicturesOpen] = useState(false);
@@ -258,16 +296,8 @@ export default function ViralAdaptationForm({ onGenerated }) {
     };
   }, []);
 
-  // Elapsed time while a meme is being made (it usually takes 2-4 minutes).
-  useEffect(() => {
-    if (!startedAt) return undefined;
-    const t = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(t);
-  }, [startedAt]);
-  const elapsed = startedAt ? Math.max(0, Math.floor((now - startedAt) / 1000)) : 0;
-  const elapsedText = `${Math.floor(elapsed / 60)}:${String(elapsed % 60).padStart(2, '0')}`;
-
-  useDocumentTitle(loading ? `Making meme ${elapsedText}` : 'Viral Adaptation');
+  // The running clock (a meme takes 2-4 minutes) lives in <Elapsed>, so this big form does not re-render every second.
+  useDocumentTitle(loading ? 'Making your meme' : 'Viral Adaptation');
   useBusyGuard(loading, 'Making your meme');
 
   // Errors appear at the top of the form; bring them into view.
@@ -372,7 +402,6 @@ export default function ViralAdaptationForm({ onGenerated }) {
       setError(null);
       setErrorDetails(null);
       setStartedAt(Date.now());
-      setNow(Date.now());
       setProgressStep(1); // Uploading & AI vision analysing
 
       const formData = new FormData();
@@ -446,8 +475,13 @@ export default function ViralAdaptationForm({ onGenerated }) {
 
   return (
     <div className="pb-6">
+      {loading && startedAt && <ElapsedTitle since={startedAt} prefix="Making meme" />}
       <PageHeader
-        eyebrow="Studio · AI adaptation"
+        eyebrow={
+          <>
+            <Greeting /> · Studio · AI adaptation
+          </>
+        }
         title={
           <>
             Adapt a <span className="marker-underline px-1">viral</span> meme
@@ -674,7 +708,7 @@ export default function ViralAdaptationForm({ onGenerated }) {
         {/* ---------------- launch panel ---------------- */}
         <aside className="space-y-4 lg:sticky lg:top-8" aria-label="Generate">
           {loading ? (
-            <Progress step={progressStep} elapsedText={elapsedText} />
+            <Progress step={progressStep} startedAt={startedAt} />
           ) : (
             <Card tone="sticker" pad="md">
               <div className="flex items-center gap-3.5">
@@ -712,11 +746,11 @@ export default function ViralAdaptationForm({ onGenerated }) {
                 ))}
               </ul>
 
-              <Button type="submit" variant="primary" size="lg" disabled={!allReady} leftIcon={<Wand2 className="h-[18px] w-[18px]" />} className="mt-5 w-full">
+              <Button type="submit" variant="primary" size="lg" disabled={!allReady || !net.ok} leftIcon={<Wand2 className="h-[18px] w-[18px]" />} className="mt-5 w-full">
                 Adapt and generate
               </Button>
               <p className="mt-3 text-center text-[12.5px] leading-snug text-muted">
-                {allReady ? 'Takes about 2–4 minutes. Keep this tab open.' : `Still needed: ${missing.join(', ')}.`}
+                {!net.ok ? net.reason : allReady ? 'Takes about 2–4 minutes. Keep this tab open.' : `Still needed: ${missing.join(', ')}.`}
               </p>
             </Card>
           )}
@@ -745,7 +779,9 @@ export default function ViralAdaptationForm({ onGenerated }) {
             <>
               <span className="working-bar h-8 w-2 shrink-0 animate-stripes rounded-full" aria-hidden="true" />
               <span className="min-w-0 flex-1 text-[13px] font-semibold">Making your meme</span>
-              <span className="tabular font-mono text-[15px] font-semibold">{elapsedText}</span>
+              <span className="tabular font-mono text-[15px] font-semibold">
+                <Elapsed since={startedAt} />
+              </span>
             </>
           ) : (
             <>
@@ -754,7 +790,7 @@ export default function ViralAdaptationForm({ onGenerated }) {
                 <span className="block font-bold">{allReady ? 'Ready to generate' : `${readyCount} of ${inputsReady.length} inputs in`}</span>
                 {!allReady && <span className="block truncate text-muted">Needs {missing[0]}</span>}
               </span>
-              <Button type="submit" variant="primary" size="sm" disabled={!allReady} leftIcon={<Wand2 className="h-4 w-4" />}>
+              <Button type="submit" variant="primary" size="sm" disabled={!allReady || !net.ok} leftIcon={<Wand2 className="h-4 w-4" />}>
                 Generate
               </Button>
             </>

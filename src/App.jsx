@@ -1,46 +1,19 @@
-import React, { useEffect, useState } from 'react';
+import React, { Suspense, lazy, useEffect, useState } from 'react';
 import { Routes, Route, NavLink, Navigate, useLocation, useNavigate } from 'react-router-dom';
-import { ExternalLink, Instagram, KeyRound, LayoutGrid, LayoutTemplate, LogOut, MessageCircle, Palette, RefreshCw, SlidersHorizontal, Sparkles, Wand2, WifiOff } from 'lucide-react';
+import { ExternalLink, Instagram, KeyRound, LogOut, MessageCircle, RefreshCw, Search, WifiOff } from 'lucide-react';
 import { useAuth } from './auth/AuthProvider';
-import CreateMemeForm from './components/CreateMemeForm';
-import ViralAdaptationForm from './components/ViralAdaptationForm';
-import MemeResultView from './components/MemeResultView';
-import MyMemesGallery from './components/MyMemesGallery';
-import StyleGuideView from './components/StyleGuideView';
-import LayoutsPage from './components/LayoutsPage';
-import SettingsPage from './components/settings/SettingsPage';
+import ErrorBoundary from './app/ErrorBoundary';
+import PageSkeleton from './app/PageSkeleton';
+import useScrollRestoration from './app/useScrollRestoration';
+import { HIDDEN_PAGES, NAV_GROUPS, PAGES, REDIRECTS, TAB_ITEMS, pageForPath, preloadPage, prefetchAllWhenIdle } from './app/routes';
+import { MOD_KEY, isTypingTarget } from './app/platform';
 import { BRAND } from './brand';
 import { API_BASE } from './api';
-import { Button, LogoMark, cn, useBusy, useConfirm, useSystemStatus } from './ui';
+import { Button, LogoMark, cn, useBusy, useConfirm, useOnline, useSystemStatus } from './ui';
 
-const NAV_GROUPS = [
-  {
-    label: 'Make',
-    items: [
-      { path: '/', label: 'Viral Adaptation', tag: 'AI', icon: Sparkles, end: true },
-      { path: '/create', label: 'Create Meme', tag: 'Manual', icon: Wand2 }
-    ]
-  },
-  {
-    label: 'Library',
-    items: [
-      { path: '/memes', label: 'My Memes', icon: LayoutGrid },
-      { path: '/layouts', label: 'Layouts', icon: LayoutTemplate },
-      { path: '/style-guide', label: 'Style Guide', icon: Palette }
-    ]
-  },
-  { label: 'Setup', items: [{ path: '/settings', label: 'Settings', icon: SlidersHorizontal }] }
-];
-
-// Mobile bottom bar: same destinations, one flat row, short labels.
-const TAB_ITEMS = [
-  { path: '/', label: 'Adapt', icon: Sparkles, end: true },
-  { path: '/memes', label: 'Memes', icon: LayoutGrid },
-  { path: '/create', label: 'Create', icon: Wand2 },
-  { path: '/layouts', label: 'Layouts', icon: LayoutTemplate },
-  { path: '/style-guide', label: 'Styles', icon: Palette },
-  { path: '/settings', label: 'Settings', icon: SlidersHorizontal }
-];
+// The Ctrl+K palette is downloaded the first time it is opened (or while the app is idle), never with the first screen.
+const loadPalette = () => import('./app/CommandPalette');
+const CommandPalette = lazy(loadPalette);
 
 /** NavLink that asks before leaving while a meme is being generated. */
 function GuardedNavLink({ to, end, className, children, ...rest }) {
@@ -61,9 +34,11 @@ function GuardedNavLink({ to, end, className, children, ...rest }) {
     });
     if (leave) navigate(to);
   };
+  // start downloading the page as soon as the pointer or keyboard reaches its link, so the click feels instant
+  const warm = () => preloadPage(pageForPath(to));
 
   return (
-    <NavLink to={to} end={end} className={className} onClick={onClick} {...rest}>
+    <NavLink to={to} end={end} className={className} onClick={onClick} onPointerEnter={warm} onFocus={warm} {...rest}>
       {children}
     </NavLink>
   );
@@ -180,7 +155,7 @@ function EngineStatus() {
   );
 }
 
-function Sidebar() {
+function Sidebar({ onOpenPalette }) {
   return (
     <aside className="on-ink fixed inset-y-0 left-0 z-50 hidden w-[252px] flex-col bg-ink text-paper md:flex">
       <NavLink to="/" className="group flex items-center gap-3 px-5 pb-5 pt-6" aria-label={`${BRAND.product}, home`}>
@@ -190,6 +165,21 @@ function Sidebar() {
           <span className="mt-1.5 block truncate font-mono text-[11px] text-paper/65">{BRAND.handle}</span>
         </span>
       </NavLink>
+
+      <div className="px-3 pb-1">
+        <button
+          type="button"
+          onClick={onOpenPalette}
+          onPointerEnter={loadPalette}
+          onFocus={loadPalette}
+          aria-label={`Search and jump (${MOD_KEY} K)`}
+          className="flex h-10 w-full items-center gap-2.5 rounded border border-white/10 bg-white/[0.05] px-3 text-left text-[13px] text-paper/65 transition-colors hover:bg-white/[0.1] hover:text-white"
+        >
+          <Search className="h-4 w-4 shrink-0" aria-hidden="true" />
+          <span className="flex-1">Jump to…</span>
+          <kbd className="rounded border border-white/15 px-1.5 font-mono text-[11px] leading-5 text-paper/60">{MOD_KEY} K</kbd>
+        </button>
+      </div>
 
       <nav aria-label="Main" className="thin-scrollbar flex-1 overflow-y-auto px-3 pb-4">
         {NAV_GROUPS.map(group => (
@@ -263,7 +253,7 @@ function Sidebar() {
   );
 }
 
-function MobileHeader() {
+function MobileHeader({ onOpenPalette }) {
   const { phase } = useSystemStatus();
   const { username, authEnabled } = useAuth();
   const signOut = useSignOut();
@@ -271,23 +261,21 @@ function MobileHeader() {
   const label = phase === 'ok' ? 'Engine online' : phase === 'down' ? 'Engine offline' : 'Checking the engine';
   return (
     <header className="sticky top-0 z-40 flex items-center justify-between border-b border-line bg-paper/90 px-4 py-2.5 backdrop-blur-md md:hidden">
-      <GuardedNavLink to="/" className="flex items-center gap-2.5" aria-label={`${BRAND.product}, home`}>
+      <GuardedNavLink to="/" className="flex min-w-0 shrink items-center gap-2.5" aria-label={`${BRAND.product}, home`}>
         <LogoMark size="sm" />
-        <span className="font-display text-[17px] font-extrabold tracking-[-0.02em]">{BRAND.product}</span>
+        <span className="whitespace-nowrap font-display text-[17px] font-extrabold tracking-[-0.02em]">{BRAND.product}</span>
       </GuardedNavLink>
-      <div className="flex items-center gap-1">
-        <span className="mr-1 inline-flex items-center gap-1.5 rounded-full border border-line bg-surface px-2.5 py-1 text-[12px] font-semibold text-ink-3" role="status">
+      <div className="flex shrink-0 items-center gap-1">
+        {/* on the narrowest phones the status is just its coloured dot (the words stay for screen readers) */}
+        <span className="mr-1 inline-flex items-center gap-1.5 whitespace-nowrap rounded-full border border-line bg-surface px-2.5 py-1 text-[12px] font-semibold text-ink-3" role="status" title={label}>
           <span className={cn('h-2 w-2 rounded-full', dot)} aria-hidden="true" />
-          {label}
+          <span className="sr-only min-[420px]:not-sr-only">{label}</span>
         </span>
-        <a href={BRAND.whatsappUrl} target="_blank" rel="noreferrer noopener" aria-label="WhatsApp bot" className="grid h-9 w-9 place-items-center rounded text-ink-3 hover:bg-ink/[0.07]">
-          <MessageCircle className="h-[18px] w-[18px]" />
-        </a>
-        <a href={BRAND.instagramUrl} target="_blank" rel="noreferrer noopener" aria-label={`${BRAND.handle} on Instagram`} className="grid h-9 w-9 place-items-center rounded text-ink-3 hover:bg-ink/[0.07]">
-          <Instagram className="h-[18px] w-[18px]" />
-        </a>
+        <button type="button" onClick={onOpenPalette} aria-label="Search and jump" title="Search, open WhatsApp or Instagram, and more" className="grid h-10 w-10 shrink-0 place-items-center rounded text-ink-3 hover:bg-ink/[0.07]">
+          <Search className="h-[18px] w-[18px]" />
+        </button>
         {authEnabled && username && (
-          <button type="button" onClick={signOut} aria-label={`Sign out ${username}`} title="Sign out" className="grid h-9 w-9 place-items-center rounded text-ink-3 hover:bg-ink/[0.07]">
+          <button type="button" onClick={signOut} aria-label={`Sign out ${username}`} title="Sign out" className="grid h-10 w-10 shrink-0 place-items-center rounded text-ink-3 hover:bg-ink/[0.07]">
             <LogOut className="h-[18px] w-[18px]" />
           </button>
         )}
@@ -300,7 +288,7 @@ function BottomNav() {
   return (
     <nav aria-label="Main" className="on-ink safe-bottom fixed inset-x-0 bottom-0 z-40 border-t border-white/10 bg-ink px-2 pt-1.5 md:hidden">
       <ul className="mx-auto flex max-w-md justify-around">
-        {TAB_ITEMS.map(({ path, label, icon: Icon, end }) => (
+        {TAB_ITEMS.map(({ path, short, icon: Icon, end }) => (
           <li key={path} className="flex-1">
             <GuardedNavLink to={path} end={end} className="group flex flex-col items-center gap-1 py-1.5 text-[11px] font-semibold">
               {({ isActive }) => (
@@ -308,7 +296,7 @@ function BottomNav() {
                   <span className={cn('grid h-7 w-12 place-items-center rounded-full transition-colors', isActive ? 'bg-marker text-ink' : 'text-paper/65 group-hover:text-white')}>
                     <Icon className="h-[18px] w-[18px]" strokeWidth={isActive ? 2.4 : 2} aria-hidden="true" />
                   </span>
-                  <span className={isActive ? 'text-white' : 'text-paper/60'}>{label}</span>
+                  <span className={isActive ? 'text-white' : 'text-paper/60'}>{short}</span>
                 </>
               )}
             </GuardedNavLink>
@@ -341,10 +329,10 @@ function StaticLoginBanner() {
   return (
     <div role="status" className="mb-6 flex flex-wrap items-center gap-3 rounded-md border border-warn/30 bg-warn-soft px-4 py-3 text-[13px] text-ink">
       <KeyRound className="h-4 w-4 shrink-0 text-warn" aria-hidden="true" />
-      <p className="min-w-0 flex-1">
+      <p className="min-w-0 flex-[1_1_16rem]">
         <strong className="font-bold">Temporary login.</strong> {staticWeak ? 'Its password is easy to guess, so anyone who finds this address can sign in and publish to Instagram.' : 'It is set in the server settings.'} Replace it before you share the link.
       </p>
-      <NavLink to="/settings?section=account" className="font-semibold underline decoration-marker decoration-2 underline-offset-2 hover:decoration-ink">
+      <NavLink to="/settings?section=account" className="inline-flex min-h-9 items-center font-semibold underline decoration-marker decoration-2 underline-offset-2 hover:decoration-ink">
         How to change it
       </NavLink>
       <Button size="sm" variant="secondary" onClick={dismiss}>
@@ -354,15 +342,49 @@ function StaticLoginBanner() {
   );
 }
 
-/** Shown only when the backend cannot be reached, so a blank gallery is never mistaken for "no memes". */
-function OfflineBanner() {
+/**
+ * One honest message about connectivity, never two at once:
+ *  - no internet but the server answers (a local studio): it still works, only the outside-world actions pause;
+ *  - no internet and no server (a hosted studio): nothing can load, but what is on screen is kept;
+ *  - internet fine but the server is down: say how to start it.
+ */
+function ConnectionBanner() {
+  const online = useOnline();
   const { phase, refresh } = useSystemStatus();
-  if (phase !== 'down') return null;
+  const down = phase === 'down';
+  if (online && !down) return null;
+
+  if (!online && !down) {
+    return (
+      <div role="status" className="mb-6 flex animate-slide-in flex-wrap items-center gap-3 rounded-md border border-warn/30 bg-warn-soft px-4 py-3 text-[13px]">
+        <WifiOff className="h-4 w-4 shrink-0 text-warn" aria-hidden="true" />
+        <p className="min-w-0 flex-[1_1_16rem] text-ink">
+          <strong className="font-bold">No internet connection.</strong> The studio itself still works, but making memes, finding pictures and publishing need the internet. They pick up again by themselves when it returns.
+        </p>
+      </div>
+    );
+  }
+
+  if (!online) {
+    return (
+      <div role="alert" className="mb-6 flex animate-slide-in flex-wrap items-center gap-3 rounded-md border border-bad/30 bg-bad-soft px-4 py-3 text-[13px]">
+        <WifiOff className="h-4 w-4 shrink-0 text-bad" aria-hidden="true" />
+        <p className="min-w-0 flex-[1_1_16rem] text-ink">
+          <strong className="font-bold">You're offline.</strong> The studio can't reach its server. Whatever is on this screen is kept, and it reconnects by itself as soon as the internet is back.
+        </p>
+        <Button size="sm" variant="secondary" onClick={refresh} leftIcon={<RefreshCw className="h-3.5 w-3.5" />}>
+          Try now
+        </Button>
+      </div>
+    );
+  }
+
   return (
     <div role="alert" className="mb-6 flex animate-slide-in flex-wrap items-center gap-3 rounded-md border border-bad/30 bg-bad-soft px-4 py-3 text-[13px] text-bad">
       <WifiOff className="h-4 w-4 shrink-0" aria-hidden="true" />
-      <p className="min-w-0 flex-1 text-ink">
-        <strong className="font-bold">Can't reach the engine</strong> at <code className="font-mono text-[12px]">{API_BASE}</code>. Start it with <code className="font-mono text-[12px]">npm start</code> in <code className="font-mono text-[12px]">memeEngine_be</code>. Retrying automatically.
+      <p className="min-w-0 flex-[1_1_16rem] text-ink">
+        <strong className="font-bold">Can't reach the engine</strong>
+        {API_BASE ? <> at <code className="font-mono text-[12px]">{API_BASE}</code></> : null}. Start it with <code className="font-mono text-[12px]">npm start</code> in <code className="font-mono text-[12px]">memeEngine_be</code>. Retrying automatically.
       </p>
       <Button size="sm" variant="secondary" onClick={refresh} leftIcon={<RefreshCw className="h-3.5 w-3.5" />}>
         Retry now
@@ -374,59 +396,86 @@ function OfflineBanner() {
 export default function App() {
   const navigate = useNavigate();
   const location = useLocation();
+  const signOut = useSignOut();
+  const { username, authEnabled } = useAuth();
+  const { refresh: refreshStatus } = useSystemStatus();
 
-  // a new page starts at the top
+  // Ctrl/⌘+K from anywhere; "/" too when not typing in a field
+  const [paletteOpen, setPaletteOpen] = useState(false);
+  const [paletteWanted, setPaletteWanted] = useState(false);
+  const openPalette = () => {
+    setPaletteWanted(true);
+    setPaletteOpen(true);
+  };
   useEffect(() => {
-    window.scrollTo(0, 0);
-  }, [location.pathname]);
+    const onKey = e => {
+      if (e.altKey || e.defaultPrevented) return;
+      const combo = (e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k';
+      const slash = e.key === '/' && !e.ctrlKey && !e.metaKey && !isTypingTarget(e.target);
+      if (!combo && !slash) return;
+      // another dialog (a confirmation, the sign-in prompt) is open: leave it alone
+      if (document.querySelector('[role="dialog"][aria-modal="true"]:not([data-palette])')) return;
+      e.preventDefault();
+      setPaletteWanted(true);
+      setPaletteOpen(o => (combo ? !o : true));
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
+  // fetch the palette's code once everything else is quiet (not on data-saver or slow connections)
+  useEffect(() => {
+    const c = navigator.connection;
+    if (c && (c.saveData || /^(slow-2g|2g|3g)$/.test(c.effectiveType || ''))) return undefined;
+    const t = setTimeout(() => loadPalette().catch(() => {}), 6000);
+    return () => clearTimeout(t);
+  }, []);
+
+  // a new page starts at the top; Back returns to where you were
+  useScrollRestoration();
+  // while the app is idle, fetch the other pages so every click is instant
+  useEffect(() => prefetchAllWhenIdle(), []);
 
   return (
     <div className="min-h-screen">
       <a href="#main" className="sr-only z-[100] rounded bg-marker px-4 py-2 font-semibold text-ink focus:not-sr-only focus:fixed focus:left-4 focus:top-4">
         Skip to content
       </a>
-      <Sidebar />
-      <MobileHeader />
+      <Sidebar onOpenPalette={openPalette} />
+      <MobileHeader onOpenPalette={openPalette} />
 
       <div className="md:pl-[252px]">
         <main id="main" className="mx-auto w-full max-w-[1240px] px-4 pb-32 pt-6 sm:px-6 md:pb-16 md:pt-10 lg:px-10">
-          <OfflineBanner />
+          <ConnectionBanner />
           <StaticLoginBanner />
-          <div key={location.pathname} className="page-enter">
-            <Routes>
-              {/* Primary workflow: reference screenshot + reaction image + punchline */}
-              <Route path="/" element={<ViralAdaptationForm onGenerated={meme => navigate(`/meme/${meme.memeId || meme.id}`, { state: { meme, from: 'viral' } })} />} />
-              <Route path="/viral" element={<Navigate to="/" replace />} />
-
-              {/* Gallery of saved memes */}
-              <Route path="/memes" element={<MyMemesGallery onSelectMeme={meme => navigate(`/meme/${meme.memeId || meme.id}`, { state: { meme, from: 'history' } })} />} />
-              <Route path="/history" element={<Navigate to="/memes" replace />} />
-
-              {/* Manual creation from your own images and texts */}
-              <Route path="/create" element={<CreateMemeForm onGenerated={meme => navigate(`/meme/${meme.memeId || meme.id}`, { state: { meme, from: 'create' } })} />} />
-
-              {/* Saved meme layouts: learned from example memes, used in manual creation and on WhatsApp */}
-              <Route path="/layouts" element={<LayoutsPage />} />
-
-              {/* Style guide: five house-style reference layouts */}
-              <Route path="/style-guide" element={<StyleGuideView />} />
-              <Route path="/styles" element={<Navigate to="/style-guide" replace />} />
-              <Route path="/reference" element={<Navigate to="/style-guide" replace />} />
-
-              {/* Settings: typography, effects, canvas, images, discovery, advanced */}
-              <Route path="/settings" element={<SettingsPage />} />
-
-              {/* Result view for an individual meme (supports deep links and page refreshes) */}
-              <Route path="/meme/:id" element={<MemeResultView />} />
-
-              {/* Fallback */}
-              <Route path="*" element={<Navigate to="/" replace />} />
-            </Routes>
-          </div>
+          <ErrorBoundary resetKey={location.pathname}>
+            {/* the Suspense boundary sits ABOVE the keyed page: while the next page's code arrives the current page stays on screen */}
+            <Suspense fallback={<PageSkeleton />}>
+              <div key={location.pathname} className="page-enter">
+                <Routes>
+                  {PAGES.map(page => (
+                    <Route key={page.id} path={page.path} element={<page.component {...(page.props ? page.props(navigate) : {})} />} />
+                  ))}
+                  {HIDDEN_PAGES.map(page => (
+                    <Route key={page.id} path={page.path} element={<page.component />} />
+                  ))}
+                  {REDIRECTS.map(([from, to]) => (
+                    <Route key={from} path={from} element={<Navigate to={to} replace />} />
+                  ))}
+                  <Route path="*" element={<Navigate to="/" replace />} />
+                </Routes>
+              </div>
+            </Suspense>
+          </ErrorBoundary>
         </main>
       </div>
 
       <BottomNav />
+
+      {paletteWanted && (
+        <Suspense fallback={null}>
+          <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} ctx={{ navigate, signOut, refreshStatus, user: { username, authEnabled } }} />
+        </Suspense>
+      )}
     </div>
   );
 }

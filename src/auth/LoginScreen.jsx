@@ -1,10 +1,10 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Check, Copy, RefreshCw, ShieldCheck, WifiOff } from 'lucide-react';
 import { useAuth } from './AuthProvider';
 import SignInForm from './SignInForm';
 import { BRAND } from '../brand';
 import { API_BASE } from '../api';
-import { Alert, Button, LogoMark, useDocumentTitle } from '../ui';
+import { Alert, Button, LogoMark, useDocumentTitle, useOnline } from '../ui';
 
 const COLLAGE = [
   { src: '/samples/phase2-facts-collage.png', style: { left: 0, top: 46, '--r': '-6deg', animationDelay: '0s', zIndex: 1 } },
@@ -49,12 +49,33 @@ function CopyCommand({ command }) {
 export default function LoginScreen() {
   useDocumentTitle('Sign in');
   const { status, refresh } = useAuth();
+  const online = useOnline();
   const [checking, setChecking] = useState(false);
+  const busy = useRef(false);
   const recheck = async () => {
+    if (busy.current) return;
+    busy.current = true;
     setChecking(true);
     await refresh();
+    busy.current = false;
     setChecking(false);
   };
+
+  // While the server cannot be reached, keep trying by itself: at once when the internet returns, otherwise every
+  // few seconds. A hosted server that was asleep (free plans do that) needs about a minute, and nobody should have to
+  // keep pressing a button for it.
+  useEffect(() => {
+    if (status !== 'offline') return undefined;
+    const retry = () => recheck();
+    window.addEventListener('online', retry);
+    const t = setInterval(() => document.visibilityState === 'visible' && retry(), 8000);
+    return () => {
+      window.removeEventListener('online', retry);
+      clearInterval(t);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [status]);
+  const noInternet = status === 'offline' && !online;
 
   return (
     <div className="grid min-h-screen lg:grid-cols-[1.05fr_1fr]">
@@ -75,7 +96,7 @@ export default function LoginScreen() {
         <div className="relative mx-auto mb-2 h-[400px] w-full max-w-[540px]">
           {COLLAGE.map(c => (
             <div key={c.src} className="absolute w-[230px] animate-float overflow-hidden rounded-sm border-2 border-ink bg-ink shadow-hard-marker" style={c.style}>
-              <img src={c.src} alt="" className="aspect-[4/5] w-full object-cover object-top" draggable="false" />
+              <img src={c.src} alt="" className="aspect-[4/5] w-full object-cover object-top" draggable="false" onError={e => (e.currentTarget.parentElement.style.display = 'none')} />
             </div>
           ))}
         </div>
@@ -92,20 +113,30 @@ export default function LoginScreen() {
           <p className="mb-3 inline-flex items-center gap-2 font-mono text-micro uppercase text-muted">
             <span className="h-2 w-2 rounded-full bg-marker ring-[1.5px] ring-ink" aria-hidden="true" /> Private studio
           </p>
-          <h1 className="text-[36px] font-extrabold leading-[1.05] tracking-[-0.03em]">{status === 'setup' ? 'One-time setup' : status === 'offline' ? 'Server not reachable' : 'Welcome back'}</h1>
+          <h1 className="text-[36px] font-extrabold leading-[1.05] tracking-[-0.03em]">{status === 'setup' ? 'One-time setup' : noInternet ? "You're offline" : status === 'offline' ? 'Server not reachable' : 'Welcome back'}</h1>
           <p className="mb-8 mt-3 text-[15px] leading-relaxed text-muted">
-            {status === 'setup' ? 'Create the owner account once, then sign in here.' : status === 'offline' ? 'The studio cannot reach its server.' : `Sign in to manage ${BRAND.handle}.`}
+            {status === 'setup' ? 'Create the owner account once, then sign in here.' : noInternet ? 'This device has no internet connection right now.' : status === 'offline' ? 'The studio is open, but its server did not answer.' : `Sign in to manage ${BRAND.handle}.`}
           </p>
 
           {status === 'offline' && (
             <div className="space-y-4">
-              <Alert tone="bad" icon={WifiOff} title="Can't reach the server">
-                Is the backend running? Start it with <code className="font-mono text-[12px]">npm start</code> in <code className="font-mono text-[12px]">memeEngine_be</code>
-                {API_BASE ? ` (looking at ${API_BASE})` : ''}.
-              </Alert>
+              {noInternet ? (
+                <Alert tone="warn" icon={WifiOff} title="No internet connection">
+                  Check your Wi-Fi or mobile data. Everything you made is safe on the server, and this page reconnects by itself the moment the internet is back.
+                </Alert>
+              ) : (
+                <Alert tone="bad" icon={WifiOff} title="Can't reach the server">
+                  If the studio is hosted, the server may be waking up (it can take up to a minute after a quiet spell), so this page keeps trying. If it runs on your own computer, start it with{' '}
+                  <code className="font-mono text-[12px]">npm start</code> in <code className="font-mono text-[12px]">memeEngine_be</code>
+                  {API_BASE ? ` (looking at ${API_BASE})` : ''}.
+                </Alert>
+              )}
               <Button variant="dark" className="w-full" onClick={recheck} loading={checking} leftIcon={<RefreshCw className="h-4 w-4" />}>
-                Try again
+                Try now
               </Button>
+              <p className="text-center text-[12.5px] text-muted" aria-live="polite">
+                Trying again automatically.
+              </p>
             </div>
           )}
 

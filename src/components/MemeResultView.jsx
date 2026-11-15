@@ -4,9 +4,10 @@ import { ArrowLeft, Check, CheckCircle2, Download, ExternalLink, GitBranch, Help
 import GenerationDetailsModal from './GenerationDetailsModal';
 import InstagramPublishModal from './InstagramPublishModal';
 import { API_BASE, apiFetch } from '../api';
+import { cachedJSON, peek } from '../lib/queryCache';
 import { MATCH_LABEL, providerName, RightsBadge, rightsSummary, sourceTypeText } from './ImageRights';
 import ReplaceImagesPanel from './imageChoice/ReplaceImagesPanel';
-import { Alert, Badge, Button, Card, CardHeader, DataRow, Disclosure, EmptyState, Kbd, Skeleton, Textarea, cn, friendlyDate, useDocumentTitle } from '../ui';
+import { Alert, Badge, Button, Card, CardHeader, DataRow, Disclosure, EmptyState, Kbd, Skeleton, Textarea, cn, friendlyDate, useAvailability, useDocumentTitle } from '../ui';
 
 /** One subject image: rights label, provider, source link (when its terms allow storing it), credit. */
 function SourceRow({ asset, index }) {
@@ -75,13 +76,38 @@ function LoadingView() {
   );
 }
 
+/**
+ * The meme on the stage. When only the small list record is known, the gallery's thumbnail shows at once and the
+ * full-size image fades in over it, so opening a meme never starts with an empty box.
+ */
+function StageImage({ src, placeholder }) {
+  const [ready, setReady] = useState(false);
+  useEffect(() => setReady(false), [src]);
+  const size = 'col-start-1 row-start-1 block max-h-[78vh] w-auto max-w-full rounded-sm border-2 border-ink bg-ink';
+  return (
+    <div className="grid place-items-center">
+      {placeholder && <img src={placeholder} alt="" aria-hidden="true" decoding="async" className={cn(size, 'transition-opacity duration-500', ready && 'opacity-0')} />}
+      <img
+        key={src}
+        src={src}
+        alt="Generated meme"
+        decoding="async"
+        onLoad={() => setReady(true)}
+        className={cn(size, 'shadow-hard-marker transition-opacity duration-500', placeholder ? (ready ? 'opacity-100' : 'opacity-0') : 'animate-pop')}
+      />
+    </div>
+  );
+}
+
 export default function MemeResultView({ meme: propMeme, onNewMeme, onMemeUpdated, backLabel: propBackLabel }) {
   const { id } = useParams();
   const navigate = useNavigate();
   const location = useLocation();
 
-  const [meme, setMeme] = useState(propMeme || location.state?.meme || null);
-  const [loading, setLoading] = useState(!propMeme && !location.state?.meme && Boolean(id));
+  // a full record we already fetched (e.g. when the pointer rested on the gallery card) beats the small list record
+  const cachedFull = id ? peek(`${API_BASE}/api/memes/${id}`) : undefined;
+  const [meme, setMeme] = useState(propMeme || cachedFull || location.state?.meme || null);
+  const [loading, setLoading] = useState(!propMeme && !cachedFull && !location.state?.meme && Boolean(id));
   const [fetchError, setFetchError] = useState(null);
 
   const [instructions, setInstructions] = useState('');
@@ -94,21 +120,35 @@ export default function MemeResultView({ meme: propMeme, onNewMeme, onMemeUpdate
   const [clarification, setClarification] = useState(null);
 
   useDocumentTitle(meme ? meme.content?.headline || meme.content?.topic || 'Meme' : 'Meme');
+  const net = useAvailability({ internet: true }); // publishing and AI changes reach outside the studio
 
+  // Nothing known yet, or only the small record from the gallery: fetch the full meme. Either way the screen shows
+  // what it has straight away and fills in the rest when it arrives.
+  const needsFull = Boolean(id) && (!meme || meme.lite);
   useEffect(() => {
-    if (!meme && id) {
+    if (!needsFull) return undefined;
+    let alive = true;
+    if (!meme) {
       setLoading(true);
       setFetchError(null);
-      apiFetch(`${API_BASE}/api/memes/${id}`)
-        .then(r => (r.ok ? r.json() : Promise.reject(new Error(`Failed to load meme ${id} (status ${r.status})`))))
-        .then(data => {
-          setMeme(data);
-          setActiveVersionNumber(data.currentVersion || 1);
-        })
-        .catch(err => setFetchError(err.message))
-        .finally(() => setLoading(false));
     }
-  }, [id, meme]);
+    cachedJSON(`/api/memes/${id}`, { ttl: 15_000 })
+      .then(data => {
+        if (!alive) return;
+        setMeme(data);
+        setActiveVersionNumber(data.currentVersion || 1);
+      })
+      .catch(err => {
+        if (!alive) return;
+        if (!meme) setFetchError(err.status === 404 ? `Failed to load meme ${id} (status 404)` : err.message);
+        else setError('Could not load all the details of this meme. Check your connection and reload the page.');
+      })
+      .finally(() => alive && setLoading(false));
+    return () => {
+      alive = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id, needsFull]);
 
   if (loading) return <LoadingView />;
 
@@ -146,6 +186,7 @@ export default function MemeResultView({ meme: propMeme, onNewMeme, onMemeUpdate
   };
 
   const memeId = meme.memeId || meme.id;
+  const isLite = Boolean(meme.lite); // only the list record so far: the full meme is on its way
   const versions = meme.versions || [];
   const activeVersion = versions.find(v => v.versionNumber === activeVersionNumber) || {
     outputUrls: meme.outputUrls,
@@ -240,6 +281,11 @@ export default function MemeResultView({ meme: propMeme, onNewMeme, onMemeUpdate
               Generation details
             </Button>
           )}
+          {(fromTab === 'viral' || fromTab === 'create') && Date.now() - new Date(meme.createdAt).getTime() < 15 * 60 * 1000 && (
+            <Badge tone="marker" className="-rotate-2 animate-pop shadow-hard-sm">
+              Fresh
+            </Badge>
+          )}
           <Badge tone="ok" icon={CheckCircle2}>
             Saved · v{activeVersionNumber} of {versions.length || 1}
           </Badge>
@@ -273,14 +319,7 @@ export default function MemeResultView({ meme: propMeme, onNewMeme, onMemeUpdate
         {/* ---------------- left: the meme ---------------- */}
         <div className="min-w-0 space-y-4">
           <Card tone="stage" pad="md" className="!p-4 sm:!p-6">
-            <div className="flex items-center justify-center">
-              <img
-                key={imageSrc}
-                src={imageSrc}
-                alt="Generated meme"
-                className="block max-h-[78vh] w-auto max-w-full animate-pop rounded-sm border-2 border-ink bg-ink shadow-hard-marker"
-              />
-            </div>
+            <StageImage src={imageSrc} placeholder={isLite ? `${API_BASE}/api/memes/${memeId}/thumb?v=${meme.currentVersion || 1}&w=720` : undefined} />
 
             {/* Version filmstrip */}
             {versions.length > 1 && (
@@ -334,7 +373,7 @@ export default function MemeResultView({ meme: propMeme, onNewMeme, onMemeUpdate
 
           {/* Publish + download */}
           <Card pad="md" className="space-y-3">
-            <Button variant="primary" size="lg" className="w-full" onClick={() => setShowInstagramModal(true)} leftIcon={<Instagram className="h-[18px] w-[18px]" />}>
+            <Button variant="primary" size="lg" className="w-full" onClick={() => setShowInstagramModal(true)} disabled={isLite || !net.ok} title={!net.ok ? net.reason : undefined} leftIcon={<Instagram className="h-[18px] w-[18px]" />}>
               Publish to Instagram
             </Button>
 
@@ -373,7 +412,7 @@ export default function MemeResultView({ meme: propMeme, onNewMeme, onMemeUpdate
           </Card>
 
           {/* Layout facts of the version on screen (real data from this meme) */}
-          <dl className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+          <dl className="grid grid-cols-[repeat(auto-fit,minmax(9rem,1fr))] gap-3">
             {[
               ['Meme type', humanize(activeVersion.layout?.memeType)],
               ['Arrangement', ARRANGEMENT_LABEL[activeVersion.layout?.arrangement] || humanize(activeVersion.layout?.arrangement)],
@@ -381,15 +420,15 @@ export default function MemeResultView({ meme: propMeme, onNewMeme, onMemeUpdate
               ['Size', `${width} × ${height}`]
             ].map(([k, v]) => (
               <div key={k} className="rounded-md border border-line bg-surface p-3">
-                <dt className="font-mono text-micro uppercase text-muted">{k}</dt>
-                <dd className="mt-1 text-[14px] font-bold leading-snug text-ink">{v}</dd>
+                <dt className="break-words font-mono text-micro uppercase text-muted">{k}</dt>
+                <dd className="mt-1 break-words text-[14px] font-bold leading-snug text-ink">{v}</dd>
               </div>
             ))}
           </dl>
         </div>
 
         {/* ---------------- right: change it ---------------- */}
-        <div className="min-w-0 space-y-4">
+        <div className={cn('min-w-0 space-y-4 transition-opacity duration-300', isLite && 'pointer-events-none opacity-50')} inert={isLite ? '' : undefined} aria-busy={isLite || undefined}>
           <Card pad="md">
             <CardHeader icon={RotateCcw} title="Change it in plain words" description="Say what to change. Only that changes; everything else stays, and the result is saved as a new version." />
 
@@ -413,19 +452,19 @@ export default function MemeResultView({ meme: propMeme, onNewMeme, onMemeUpdate
                   type="button"
                   onClick={() => setInstructions(pill)}
                   disabled={regenerating}
-                  className="rounded-full border border-line-strong bg-surface px-3 py-1 text-[12.5px] font-medium text-ink-3 transition-colors hover:border-ink hover:bg-marker-soft hover:text-ink disabled:opacity-50"
+                  className="min-h-8 rounded-full border border-line-strong bg-surface px-3.5 py-1 text-[12.5px] font-medium text-ink-3 transition-colors hover:border-ink hover:bg-marker-soft hover:text-ink disabled:opacity-50 [@media(pointer:coarse)]:min-h-10"
                 >
                   {pill}
                 </button>
               ))}
             </div>
 
-            <Button variant="dark" size="lg" className="w-full" loading={regenerating} onClick={handleRegenerate} leftIcon={<Wand2 className="h-[18px] w-[18px]" />}>
+            <Button variant="dark" size="lg" className="w-full" loading={regenerating} disabled={!net.ok} onClick={handleRegenerate} leftIcon={<Wand2 className="h-[18px] w-[18px]" />}>
               {regenerating ? 'Making a new version…' : `Make version ${(meme.currentVersion || 1) + 1}`}
             </Button>
             <p className="mt-2.5 flex items-center justify-center gap-1.5 text-[12px] text-muted">
               <Kbd>Ctrl</Kbd>
-              <Kbd>Enter</Kbd> to apply
+              <Kbd>Enter</Kbd> to apply{!net.ok && <span className="ml-1 font-semibold text-bad">· {net.reason}</span>}
             </p>
           </Card>
 

@@ -8,6 +8,18 @@ export const API_BASE = String(import.meta.env.VITE_API_BASE ?? '').replace(/\/+
 const AUTH_PATH = /\/api\/auth\//;
 
 /**
+ * An answer index.html asked for before the app's code had loaded (window.__early.<name>, a Promise of a Response or
+ * null). Handed out once, only when the API is on this same address, and null when there is none or it failed:
+ * callers then simply make the normal request.
+ */
+export function takeEarly(name) {
+  if (API_BASE || typeof window === 'undefined' || !window.__early) return null;
+  const pending = window.__early[name];
+  window.__early[name] = null;
+  return pending || null;
+}
+
+/**
  * fetch() for the backend: sends the session cookie and, when the server says "sign in" (401) on any
  * call other than the sign-in calls themselves, tells the app so it can ask the owner to sign in again
  * without losing what is on screen.

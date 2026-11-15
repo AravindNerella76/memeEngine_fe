@@ -1,4 +1,5 @@
 import { API_BASE, apiFetch } from '../../api';
+import { cachedJSON, invalidate } from '../../lib/queryCache';
 
 /** Settings API (the backend validates everything again; these helpers only shape requests). */
 async function request(method, url, body, signal) {
@@ -19,9 +20,11 @@ async function request(method, url, body, signal) {
 }
 
 export const settingsApi = {
-  load: () => request('GET', '/api/settings'),
-  save: patch => request('PUT', '/api/settings', patch),
-  reset: section => request('POST', '/api/settings/reset', { section }),
+  // Shares the request the route registry may already have started while this page's code downloaded. A copy is handed
+  // out because the page edits what it receives and the cache must keep the server's version.
+  load: () => cachedJSON('/api/settings', { ttl: 5_000 }).then(data => structuredClone(data)),
+  save: patch => request('PUT', '/api/settings', patch).then(r => (invalidate(`${API_BASE}/api/settings`), r)),
+  reset: section => request('POST', '/api/settings/reset', { section }).then(r => (invalidate(`${API_BASE}/api/settings`), r)),
   preview: (body, signal) => request('POST', '/api/settings/preview', body, signal)
 };
 

@@ -1,5 +1,5 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
-import { API_BASE, apiFetch } from '../api';
+import { API_BASE, apiFetch, takeEarly } from '../api';
 
 const AuthContext = createContext(null);
 
@@ -39,7 +39,14 @@ export function AuthProvider({ children }) {
 
   const refresh = useCallback(async () => {
     try {
-      const { res, data } = await authRequest('GET', '/api/auth/me');
+      // the first check was already sent by index.html while this code was downloading; use that answer if it worked
+      let out = null;
+      const early = takeEarly('me');
+      if (early) {
+        const res = await early;
+        if (res) out = { res, data: await res.json().catch(() => ({})) };
+      }
+      const { res, data } = out || (await authRequest('GET', '/api/auth/me'));
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       if (data.authenticated) setState({ status: 'authed', username: data.username || null, authEnabled: data.authEnabled !== false, expired: false, staticLogin: Boolean(data.staticCredentials), staticWeak: Boolean(data.staticWeak) });
       else setState({ status: data.setupRequired ? 'setup' : 'anon', username: null, authEnabled: true, expired: false, staticLogin: false, staticWeak: false });

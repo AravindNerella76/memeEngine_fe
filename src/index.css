@@ -47,7 +47,6 @@
     /* faint halftone dots: print-shop texture without noise */
     background-image: radial-gradient(rgb(var(--ink) / 0.055) 1px, transparent 1.2px);
     background-size: 22px 22px;
-    background-attachment: fixed;
     min-height: 100vh;
   }
 
@@ -108,11 +107,11 @@
 
   /* Telugu text must read like the final meme: roomy line height, correct face */
   .telugu-input {
-    font-family: 'Noto Sans Telugu', 'Instrument Sans', sans-serif;
+    font-family: 'Noto Sans Telugu Variable', 'Noto Sans Telugu', 'Instrument Sans Variable', sans-serif;
     font-size: 17px;
     line-height: 1.75;
   }
-  .telugu-text { font-family: 'Noto Sans Telugu', Ramabhadra, sans-serif; }
+  .telugu-text { font-family: 'Noto Sans Telugu Variable', 'Noto Sans Telugu', Ramabhadra, sans-serif; }
 
   /* The slider's filled part follows --pct, set inline */
   .range {
@@ -154,6 +153,8 @@
   }
   .range:hover::-webkit-slider-thumb { transform: scale(1.12); }
   .range:disabled { opacity: 0.4; cursor: not-allowed; }
+  /* a finger needs a taller grab area than a mouse */
+  @media (pointer: coarse) { .range { height: 34px; } }
   .range:focus-visible { outline-offset: 4px; }
 
   /* Native colour picker without the browser's padded chrome */

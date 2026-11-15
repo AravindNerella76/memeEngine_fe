@@ -7,10 +7,17 @@
     <meta name="description" content="Studio for @kanyaraasi_memes: adapt viral memes in Telugu, check every picture, publish to Instagram." />
     <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect x='9' y='9' width='50' height='50' rx='13' fill='%230E0E0C'/%3E%3Crect x='4' y='4' width='50' height='50' rx='13' fill='%23FFE500' stroke='%230E0E0C' stroke-width='4'/%3E%3Cpath d='M16 41V21l11 13 11-13v20' fill='none' stroke='%230E0E0C' stroke-width='6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E" />
     <meta name="theme-color" content="#F7F4EB" />
-    <!-- Fonts: Bricolage Grotesque (headings), Instrument Sans (UI), JetBrains Mono (data), Anton (meme type), Noto Sans Telugu + Ramabhadra + Mandali (Telugu) -->
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Anton&family=Bricolage+Grotesque:opsz,wght@12..96,500..800&family=Instrument+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Mandali&family=Noto+Sans+Telugu:wght@400;500;600;700;900&family=Ramabhadra&display=swap" rel="stylesheet">
+    <!-- The two fonts every screen's first paint uses, fetched together with the code instead of after it: no flash of
+         a different font, nothing shifts when they arrive. Everything else (mono, Telugu, meme fonts) loads when used. -->
+    <link rel="preload" as="font" type="font/woff2" crossorigin href="/node_modules/@fontsource-variable/instrument-sans/files/instrument-sans-latin-wght-normal.woff2" />
+    <link rel="preload" as="font" type="font/woff2" crossorigin href="/node_modules/@fontsource-variable/bricolage-grotesque/files/bricolage-grotesque-latin-wght-normal.woff2" />
+      <script>
+      // Ask "who is signed in?" right now, while the app's code is still downloading (it used to wait for it, which
+      // put a full round trip in front of the first screen). The app picks the answer up once: see takeEarly in src/api.js.
+      try {
+        window.__early = { me: fetch('/api/auth/me', { credentials: 'include' }).catch(function () { return null; }) };
+      } catch (e) {}
+    </script>
   </head>
   <body>
     <div id="root"></div>

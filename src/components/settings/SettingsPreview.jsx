@@ -156,7 +156,7 @@ export default function SettingsPreview({ patch, blocked, sample, onSampleChange
       )}
 
       <div className="border-t border-white/10 pt-3">
-        <button type="button" onClick={() => setShowText(v => !v)} className="flex w-full items-center justify-between text-[13px] font-semibold text-paper/80 hover:text-white" aria-expanded={showText}>
+        <button type="button" onClick={() => setShowText(v => !v)} className="flex min-h-9 w-full items-center justify-between text-[13px] font-semibold text-paper/80 hover:text-white" aria-expanded={showText}>
           Try your own text
           <ChevronDown className={cn('h-4 w-4 transition-transform', showText && 'rotate-180')} />
         </button>

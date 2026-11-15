@@ -3,8 +3,9 @@ import { Link } from 'react-router-dom';
 import { ArrowLeft, ArrowRight, Check, Film, Plus, Sparkles, Trash2, Upload, Wand2, X } from 'lucide-react';
 import { SAMPLE_TEMPLATES } from './SampleTemplates';
 import { API_BASE, apiFetch } from '../api';
+import { cachedJSON } from '../lib/queryCache';
 import { ColorField, NumberField, Segmented, SelectField } from './settings/controls';
-import { Alert, Badge, Button, Card, Field, ImageDrop, Input, PageHeader, Textarea, cn, isImageFile, useDocumentTitle, useImageSlot, useToast } from '../ui';
+import { Alert, Badge, Button, Card, Field, ImageDrop, Input, PageHeader, Textarea, cn, isImageFile, useDocumentTitle, useImageSlot, useAvailability, useToast } from '../ui';
 
 const MEME_TYPES = [
   { id: 'facts_collage', title: 'Facts / Collage', desc: 'Grid arrangement with individual cell labels' },
@@ -86,6 +87,7 @@ function Step({ n, title, hint, children, done }) {
 export default function CreateMemeForm({ onGenerated }) {
   useDocumentTitle('Create Meme');
   const toast = useToast();
+  const net = useAvailability(); // building a meme by hand needs the engine, not the internet
 
   // Meme Information
   const [topic, setTopic] = useState('');
@@ -126,8 +128,7 @@ export default function CreateMemeForm({ onGenerated }) {
   const [settingsLoaded, setSettingsLoaded] = useState(false);
   useEffect(() => {
     let alive = true;
-    apiFetch(`${API_BASE}/api/settings`)
-      .then(r => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
+    cachedJSON('/api/settings', { ttl: 60_000 })
       .then(j => {
         if (!alive || !j?.settings) return;
         const s = j.settings;
@@ -551,7 +552,7 @@ export default function CreateMemeForm({ onGenerated }) {
 
         {/* 4. Meme type */}
         <Step n={4} title="Meme type" hint="Decides how the pictures are arranged." done>
-          <div role="radiogroup" aria-label="Meme type" className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+          <div role="radiogroup" aria-label="Meme type" className="grid grid-cols-[repeat(auto-fit,minmax(11rem,1fr))] gap-3">
             {MEME_TYPES.map(type => {
               const active = memeType === type.id;
               return (
@@ -622,10 +623,16 @@ export default function CreateMemeForm({ onGenerated }) {
 
       {/* Generate bar */}
       <div className="sticky bottom-[84px] z-30 mt-6 flex items-center justify-between gap-4 rounded-lg border-2 border-ink bg-surface p-3.5 shadow-hard md:bottom-6">
-        <p className="text-[13px] text-muted">
-          <strong className="tabular font-mono text-ink">{subjectFiles.length}</strong> subject {subjectFiles.length === 1 ? 'image' : 'images'} + <strong className="tabular font-mono text-ink">{reactionFile ? 1 : 0}</strong> reaction image
+        <p className={cn('text-[13px]', net.ok ? 'text-muted' : 'font-semibold text-bad')}>
+          {net.ok ? (
+            <>
+              <strong className="tabular font-mono text-ink">{subjectFiles.length}</strong> subject {subjectFiles.length === 1 ? 'image' : 'images'} + <strong className="tabular font-mono text-ink">{reactionFile ? 1 : 0}</strong> reaction image
+            </>
+          ) : (
+            net.reason
+          )}
         </p>
-        <Button variant="primary" size="lg" loading={loading} onClick={handleGenerate} leftIcon={<Wand2 className="h-[18px] w-[18px]" />}>
+        <Button variant="primary" size="lg" loading={loading} disabled={!net.ok} onClick={handleGenerate} leftIcon={<Wand2 className="h-[18px] w-[18px]" />}>
           {loading ? 'Making the meme…' : 'Generate meme'}
         </Button>
       </div>

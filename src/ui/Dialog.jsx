@@ -6,7 +6,7 @@ import { cn } from './cn';
 
 // ---- scroll lock shared by every open dialog -------------------------------------------------------
 let lockCount = 0;
-function lockScroll() {
+export function lockScroll() {
   if (lockCount++ === 0) {
     const scrollbar = window.innerWidth - document.documentElement.clientWidth;
     document.body.style.overflow = 'hidden';

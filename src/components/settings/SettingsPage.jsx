@@ -7,18 +7,24 @@ import { AdvancedSection, CanvasSection, DiscoverySection, EffectsSection, Image
 import InstagramSection from './InstagramSection';
 import WhatsAppSection from './WhatsAppSection';
 import AccountSection from './AccountSection';
-import { Alert, Badge, Button, EmptyState, PageHeader, Skeleton, cn, useConfirm, useDocumentTitle, useToast } from '../../ui';
+import { Alert, Badge, Button, EmptyState, PageHeader, Skeleton, cn, useAvailability, useConfirm, useDocumentTitle, useToast } from '../../ui';
 
+/**
+ * THE list of settings sections, in menu order. To add one:
+ *   1. its titles go in SECTION_INFO (settingsModel.js; the Ctrl+K palette reads them from there too),
+ *   2. its form is a component taking the section props,
+ *   3. one line here. `preview: true` shows the live sample meme beside it.
+ */
 const SECTIONS = [
-  { id: 'typography', icon: Type, preview: true },
-  { id: 'effects', icon: Palette, preview: true },
-  { id: 'canvas', icon: LayoutTemplate, preview: true },
-  { id: 'imageProcessing', icon: Image, preview: true },
-  { id: 'discovery', icon: Globe, preview: false },
-  { id: 'instagram', icon: Instagram, preview: false },
-  { id: 'whatsapp', icon: MessageCircle, preview: false },
-  { id: 'advanced', icon: Gauge, preview: false },
-  { id: 'account', icon: KeyRound, preview: false }
+  { id: 'typography', icon: Type, preview: true, Body: TypographySection },
+  { id: 'effects', icon: Palette, preview: true, Body: EffectsSection },
+  { id: 'canvas', icon: LayoutTemplate, preview: true, Body: CanvasSection },
+  { id: 'imageProcessing', icon: Image, preview: true, Body: ImageSection },
+  { id: 'discovery', icon: Globe, preview: false, Body: DiscoverySection },
+  { id: 'instagram', icon: Instagram, preview: false, Body: InstagramSection },
+  { id: 'whatsapp', icon: MessageCircle, preview: false, Body: WhatsAppSection },
+  { id: 'advanced', icon: Gauge, preview: false, Body: AdvancedSection },
+  { id: 'account', icon: KeyRound, preview: false, Body: AccountSection }
 ];
 
 const DRAFT_KEY = 'meme_engine_settings_draft';
@@ -46,6 +52,7 @@ const touched = patch => Object.keys(patch || {}).filter(k => SECTION_INFO[k]);
 
 export default function SettingsPage() {
   useDocumentTitle('Settings');
+  const net = useAvailability(); // saving needs the engine; unsaved changes stay on this screen until it answers
   const toast = useToast();
   const confirm = useConfirm();
   const [searchParams] = useSearchParams();
@@ -204,8 +211,12 @@ export default function SettingsPage() {
   if (!draft || !meta) {
     return (
       <div aria-busy="true" aria-label="Loading settings">
-        <Skeleton className="mb-3 h-4 w-28" />
-        <Skeleton className="mb-8 h-11 w-64" />
+        {/* the title is known before the data arrives: show it at once so the page never looks empty */}
+        <PageHeader
+          eyebrow="Setup"
+          title="Settings"
+          description="The house style and pipeline for every new meme. Each meme keeps a copy of the style it was made with, so changes here never alter existing memes or their versions."
+        />
         <div className="grid gap-5 xl:grid-cols-[220px_minmax(0,1fr)]">
           <Skeleton className="hidden h-80 xl:block" />
           <div className="space-y-4">
@@ -222,7 +233,7 @@ export default function SettingsPage() {
   const sectionProps = { draft, defaults: meta.defaults, schema: meta.schema, fonts: meta.fonts, errors, set, role, setRole, meta: { ...meta, savedSettings: saved } };
   const changedSections = new Set(touched(patch));
   const sectionErrors = id => Object.keys(clientErrors).some(k => k.startsWith(`${id}.`));
-  const SectionBody = { typography: TypographySection, effects: EffectsSection, canvas: CanvasSection, imageProcessing: ImageSection, discovery: DiscoverySection, instagram: InstagramSection, whatsapp: WhatsAppSection, advanced: AdvancedSection, account: AccountSection }[section];
+  const SectionBody = current.Body;
 
   return (
     <div className="pb-32">
@@ -331,11 +342,12 @@ export default function SettingsPage() {
                 {errorCount} value{errorCount === 1 ? '' : 's'} to fix
               </p>
             )}
+            {!net.ok && <p className="font-semibold text-coral">{net.reason} Your changes are kept here until you can save.</p>}
           </div>
           <Button variant="on-ink" size="sm" onClick={discard} disabled={saving} leftIcon={<Undo2 className="h-3.5 w-3.5" />}>
             Discard
           </Button>
-          <Button variant="marker-on-ink" size="sm" onClick={save} loading={saving} disabled={errorCount > 0} leftIcon={<Save className="h-3.5 w-3.5" />}>
+          <Button variant="marker-on-ink" size="sm" onClick={save} loading={saving} disabled={errorCount > 0 || !net.ok} leftIcon={<Save className="h-3.5 w-3.5" />}>
             Save changes
           </Button>
         </div>

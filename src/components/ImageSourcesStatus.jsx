@@ -139,11 +139,11 @@ export default function ImageSourcesStatus({ onSelectionChange }) {
           Tap a source to switch it on or off for this meme. <span className="tabular font-mono font-semibold text-ink">{selected.size}</span> on.
         </p>
         <div className="flex flex-wrap items-center gap-2">
-          <button type="button" onClick={handleSelectAll} className="text-[13px] font-semibold underline decoration-marker decoration-2 underline-offset-2 hover:decoration-ink">
+          <button type="button" onClick={handleSelectAll} className="inline-flex min-h-8 items-center text-[13px] font-semibold underline decoration-marker decoration-2 underline-offset-2 hover:decoration-ink">
             All on
           </button>
           {hasVision && (
-            <button type="button" onClick={handleVisionOnly} className="text-[13px] font-semibold underline decoration-marker decoration-2 underline-offset-2 hover:decoration-ink">
+            <button type="button" onClick={handleVisionOnly} className="inline-flex min-h-8 items-center text-[13px] font-semibold underline decoration-marker decoration-2 underline-offset-2 hover:decoration-ink">
               Vision only
             </button>
           )}

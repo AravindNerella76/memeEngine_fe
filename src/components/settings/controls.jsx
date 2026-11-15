@@ -146,7 +146,7 @@ export function ColorField({ label, description, value, onChange, error, default
             if (HEX.test(v)) onChange(v.toUpperCase());
           }}
           aria-invalid={error || localError ? true : undefined}
-          className="field w-32 font-mono uppercase !text-[13px]"
+          className="field min-w-0 max-w-[8rem] flex-1 font-mono uppercase !text-[13px]"
         />
       </div>
     </Field>

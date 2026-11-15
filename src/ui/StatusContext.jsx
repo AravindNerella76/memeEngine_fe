@@ -52,9 +52,11 @@ export function StatusProvider({ children }) {
     const wake = () => document.visibilityState !== 'hidden' && check();
     document.addEventListener('visibilitychange', wake);
     window.addEventListener('online', check);
+    window.addEventListener('offline', check); // learn at once that the server is unreachable, not at the next poll
     return () => {
       document.removeEventListener('visibilitychange', wake);
       window.removeEventListener('online', check);
+      window.removeEventListener('offline', check);
     };
   }, [check]);
 

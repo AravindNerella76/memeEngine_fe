@@ -29,6 +29,24 @@ The look comes from the memes themselves: ink black, the `#FFE500` marker yellow
 - **Long work**: wrap it in `useBusyGuard(active)` so closing the tab or navigating away asks first.
 - Identity details (handle, WhatsApp number, URLs) are in `src/brand.js`.
 
+## How the app stays fast (and how to extend it without breaking that)
+
+**Adding a page** is one entry in `src/app/routes.jsx` (`PAGES`): path, label, icon, group, `component: lazyPage(() => import(...))`. The sidebar, the phone tab bar, the router, idle prefetching and the Ctrl+K palette all read that list, so nothing else needs editing. Optional `prefetch: () => warm('/api/...')` asks for the page's data while its code is still downloading. Only the landing page is bundled with the app (`eagerPage`); keep it to one.
+
+**Adding a Ctrl+K command** is one object in `ACTIONS` in `src/app/commands.js`. Pages and settings sections appear in the palette by themselves.
+
+**Adding a settings section**: titles in `SECTION_INFO` (`components/settings/settingsModel.js`), the form component, one line in `SECTIONS` in `SettingsPage.jsx`.
+
+What is in place, and the rules that keep it working:
+
+- **Code splitting.** Every page except the landing one is its own file, fetched on first need and prefetched one at a time while the browser is idle (never on data-saver or slow connections). `vite.config.js` groups shared code into a few long-lived files (`react`, `router`, `icons`, `vendor`, `ui`) that the HTML preloads in parallel; a new release leaves the vendor files cached. Do not import a page component directly from another file.
+- **Requests.** `src/lib/queryCache.js` (`cachedJSON`, `warm`, `invalidate`) shares identical in-flight requests and serves very recent answers. Call `invalidate('/api/...')` after anything that changes that data. `index.html` starts the sign-in check before any script has loaded, and `main.jsx` starts the current page's code and data in parallel.
+- **Long lists.** The gallery pages the backend (`/api/memes/list`, 24 at a time, a lean record per meme), shows small JPEG thumbnails (`/api/memes/:id/thumb`, made when a meme is saved), loads more on scroll, renders updates as transitions and skips layout of off-screen cards (`content-visibility`). New list screens should do the same.
+- **Re-render discipline.** Anything that ticks (clocks, progress) lives in its own small component (`ui/Elapsed.jsx`), never in a big form's state.
+- **Fonts** are self-hosted (`src/fonts.js`); only the two used by the first screen are preloaded. The logo is an SVG path, so the 120 KB Telugu font is only fetched where Telugu text is shown.
+- **Offline.** `public/sw.js` keeps the app shell, built files and sample pictures so the studio opens without a connection (never `/api`, `/output` or `/uploads`). `ui/Online.jsx` (`useOnline`, `useAvailability`) tells screens whether the internet and the server are reachable, and buttons that need them disable themselves with the reason. Banners in `App.jsx` explain the three situations: no internet, no server, server down. To turn the service worker off for a browser: `localStorage.setItem('meme_engine_offline_shell','off')` and reload.
+- **Failures.** `app/ErrorBoundary.jsx` keeps the menu usable when one page crashes or its files cannot be downloaded, with Try again. `app/useScrollRestoration.js` starts new pages at the top and returns to your place on Back or reload.
+
 ## Tech Stack
 
 - React 18
