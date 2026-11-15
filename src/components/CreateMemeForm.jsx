@@ -2,6 +2,8 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { markReactionUsed } from '../lib/reactionLibrary';
 import ReactionPicker from './reactions/ReactionPicker';
+import ReactionFraming from './reactions/ReactionFraming';
+import { framingToSend } from '../lib/reactionFraming';
 import { ArrowLeft, ArrowRight, Check, Film, Plus, Sparkles, Trash2, Upload, Wand2, X } from 'lucide-react';
 import { SAMPLE_TEMPLATES } from './SampleTemplates';
 import { API_BASE, apiFetch } from '../api';
@@ -102,6 +104,9 @@ export default function CreateMemeForm({ onGenerated }) {
   // Assets
   const [subjectFiles, setSubjectFiles] = useState([]); // [{ id, file, preview, label }]
   const [reactionFile, setReactionFile] = useImageSlot(); // { file, preview, name }
+  const [framing, setFraming] = useState(null); // how the reaction picture is framed; null = not decided
+  const [needsChoice, setNeedsChoice] = useState(false); // a stacked reaction picture: the owner has not yet said which frame
+  useEffect(() => setFraming(null), [reactionFile?.file]);
   const [dropOver, setDropOver] = useState(false);
 
   // Meme Type
@@ -283,6 +288,10 @@ export default function CreateMemeForm({ onGenerated }) {
       setError('Please upload a reaction / punchline movie image');
       return;
     }
+    if (needsChoice) {
+      setError('Your reaction picture has more than one frame. Choose which frame to use (under the reaction image) and try again.');
+      return;
+    }
 
     try {
       setLoading(true);
@@ -323,7 +332,8 @@ export default function CreateMemeForm({ onGenerated }) {
           outlineThickness: Number(outlineThickness),
           fontSizeScale: Number(fontSizeScale),
           shadowBlur: Number(shadowBlur),
-          canvasPreset
+          canvasPreset,
+          reactionFraming: framingToSend(framing) || undefined
         },
         subjectLabels: subjectFiles.map(s => s.label.trim())
       };
@@ -551,6 +561,7 @@ export default function CreateMemeForm({ onGenerated }) {
             thumbClass="h-[72px] w-32"
             note="Goes in the bottom punchline section."
           />
+          {reactionFile?.file && <ReactionFraming file={reactionFile.file} framing={framing} onFraming={setFraming} onNeedsChoice={setNeedsChoice} />}
           <ReactionPicker disabled={loading} onPick={({ file, image }) => setReactionFile({ ...makeImageItem(file), libraryId: image.imageId })} />
         </Step>
 

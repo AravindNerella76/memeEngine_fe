@@ -49,7 +49,7 @@ export const DEFAULT_PUNCH_STYLE = {
  * colours, outline). The first wrapped line takes the highlight colour, as the renderer does. The
  * real meme is drawn by the server; this only shows what to expect while typing.
  */
-export default function PunchlinePreview({ image, text, style: given, englishFont, className }) {
+export default function PunchlinePreview({ image, text, style: given, englishFont, className, aspect }) {
   const style = { ...DEFAULT_PUNCH_STYLE, ...(given || {}) };
   const english = englishFont || style.english;
   const weight = style.weight === 'normal' ? 400 : 700;
@@ -87,7 +87,7 @@ export default function PunchlinePreview({ image, text, style: given, englishFon
   const place = style.position === 'top' ? 'top-[6%]' : style.position === 'middle' ? 'top-1/2 -translate-y-1/2' : 'bottom-[6%]';
 
   return (
-    <div className={cn('relative aspect-video overflow-hidden rounded border-2 border-ink bg-ink-2 shadow-hard-sm', className)} style={{ containerType: 'inline-size' }}>
+    <div className={cn('relative overflow-hidden rounded border-2 border-ink bg-ink-2 shadow-hard-sm', !aspect && 'aspect-video', className)} style={{ containerType: 'inline-size', ...(aspect ? { aspectRatio: aspect } : {}) }}>
       {image ? (
         <img src={image} alt="" className="absolute inset-0 h-full w-full object-cover" />
       ) : (

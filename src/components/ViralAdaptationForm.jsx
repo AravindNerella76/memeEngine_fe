@@ -21,6 +21,8 @@ import { cachedJSON } from '../lib/queryCache';
 import { MOD_KEY } from '../app/platform';
 import { markReactionUsed, reactionAsFile } from '../lib/reactionLibrary';
 import ReactionPicker from './reactions/ReactionPicker';
+import ReactionFraming from './reactions/ReactionFraming';
+import { framingToSend } from '../lib/reactionFraming';
 import ImageSourcesStatus from './ImageSourcesStatus';
 import ViralImageChoices from './imageChoice/ViralImageChoices';
 import PunchlinePreview from './PunchlinePreview';
@@ -235,6 +237,10 @@ export default function ViralAdaptationForm({ onGenerated }) {
   // The three core inputs
   const [referenceFile, setReferenceFile] = useImageSlot(); // { file, preview, name }
   const [reactionFile, setReactionFile] = useImageSlot(); // { file, preview, name, libraryId? }
+  const [framing, setFraming] = useState(null); // how the reaction picture is framed; null = not decided
+  const [needsChoice, setNeedsChoice] = useState(false); // a stacked reaction picture: the owner has not yet said which frame
+  const [panelPreview, setPanelPreview] = useState(null); // the framed reaction panel, for the live punchline preview
+  useEffect(() => setFraming(null), [reactionFile?.file]);
 
   // "Use in a meme" on the Reactions page lands here with the picture's id: put it in the reaction slot
   const location = useLocation();
@@ -327,7 +333,7 @@ export default function ViralAdaptationForm({ onGenerated }) {
 
   const inputsReady = [
     { key: 'reference', label: 'Reference screenshot', ok: Boolean(referenceFile), target: 'step-reference' },
-    { key: 'reaction', label: 'Your reaction image', ok: Boolean(reactionFile), target: 'step-reaction' },
+    { key: 'reaction', label: needsChoice ? 'Choose which frame to use' : 'Your reaction image', ok: Boolean(reactionFile) && !needsChoice, target: 'step-reaction' },
     { key: 'punchline', label: 'Your punchline', ok: Boolean(punchline.trim()), target: 'step-punchline' }
   ];
   const readyCount = inputsReady.filter(i => i.ok).length;
@@ -434,6 +440,8 @@ export default function ViralAdaptationForm({ onGenerated }) {
       }
       formData.append('reactionImage', reactionFile.file);
       if (reactionFile.libraryId) markReactionUsed(reactionFile.libraryId); // the quick-pick row learns which ones you use
+      const framingChoice = framingToSend(framing);
+      if (framingChoice) formData.append('reactionFraming', JSON.stringify(framingChoice));
       formData.append('punchline', punchline.trim());
       if (reactionContext.trim()) {
         formData.append('reactionContext', reactionContext.trim());
@@ -634,6 +642,7 @@ export default function ViralAdaptationForm({ onGenerated }) {
               thumbClass="h-[72px] w-32"
               note="Goes in the bottom reaction section."
             />
+            {reactionFile?.file && <ReactionFraming file={reactionFile.file} framing={framing} onFraming={setFraming} onPanel={setPanelPreview} onNeedsChoice={setNeedsChoice} />}
             <ReactionPicker disabled={loading} onPick={({ file, image }) => setReactionFile({ ...makeImageItem(file), libraryId: image.imageId })} />
           </Step>
 
@@ -665,7 +674,7 @@ export default function ViralAdaptationForm({ onGenerated }) {
                   />
                 )}
               </Field>
-              <PunchlinePreview image={reactionFile?.preview} text={punchline} style={punchStyle} englishFont={fontFamily || undefined} />
+              <PunchlinePreview image={panelPreview?.url || reactionFile?.preview} aspect={panelPreview?.aspect} text={punchline} style={punchStyle} englishFont={fontFamily || undefined} />
             </div>
           </Step>
 

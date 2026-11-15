@@ -7,6 +7,7 @@ Interactive React web frontend for the Meme Generator Engine, styled with Tailwi
 - **Meme Creation Form**: Select archetypes (Trending News, Facts Collage, Comparison Columns, Movie Review, Stacked Comparison), input titles, badges, watermarks, tags, and custom text slots.
 - **Image Uploads**: Upload topic images and reaction images with real-time preview and crop aspect ratio controls.
 - **Reaction library** (`/reactions`): your reaction pictures filed by situation, emotion and subject. Import whole folders at once (each sub-folder becomes a folder), search by folder or tag, and pick one in a tap from the row under the reaction slot of both meme forms. Pictures are stored in the backend's database, so they are on every device.
+- **Reaction framing**: when a reaction picture is made of stacked frames the studio asks which to use (both side by side, either frame alone, or the whole picture, each shown as a small picture) and keeps Generate closed until you answer. A live preview can be dragged (or nudged with the arrow keys), and a warning appears when the picture is too small to look sharp. The studio's copy of the rules (`lib/reactionPlan.js`) matches the backend's exactly.
 - **Multilingual Support**: Supports Telugu and English scripts with font options.
 - **Interactive Result Viewer**: Live preview, download as JPEG or PNG, toggle comparison views, and trigger versioned regenerations.
 - **Meme Gallery**: View saved memes, inspect version histories, and manage saved records.
