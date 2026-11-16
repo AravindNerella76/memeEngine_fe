@@ -1,9 +1,43 @@
 import React, { useState } from 'react';
-import { ExternalLink, Eye, ImagePlus, Replace, X } from 'lucide-react';
+import { ExternalLink, Eye, ImageIcon, ImagePlus, Replace, X } from 'lucide-react';
 import { API_BASE, apiFetch } from '../../api';
 import ImagePicker, { discardStaged, StagedCard } from './ImagePicker';
 import { sourceTypeText } from '../ImageRights';
 import { Alert, Badge, Button, Card, CardHeader } from '../../ui';
+
+function SubjectThumb({ memeId, index, version, asset }) {
+  const [failed, setFailed] = useState(false);
+  const slot = index + 1;
+  const primarySrc = `${API_BASE}/api/memes/${memeId}/assets/subject-${index}?v=${version}-${asset.id || index}`;
+
+  if (failed) {
+    if (asset?.sourceUrl && failed !== 'all') {
+      return (
+        <img
+          src={asset.sourceUrl}
+          alt={`Image ${slot}`}
+          onError={() => setFailed('all')}
+          className="h-16 w-16 shrink-0 rounded border-2 border-ink bg-ink object-cover"
+        />
+      );
+    }
+    return (
+      <div className="flex h-16 w-16 shrink-0 flex-col items-center justify-center rounded border-2 border-ink bg-paper-2 text-ink shadow-sm">
+        <ImageIcon className="h-6 w-6 text-muted" />
+        <span className="mt-0.5 text-[10px] font-mono font-bold text-ink">#{slot}</span>
+      </div>
+    );
+  }
+
+  return (
+    <img
+      src={primarySrc}
+      alt={`Image ${slot}`}
+      onError={() => setFailed(true)}
+      className="h-16 w-16 shrink-0 rounded border-2 border-ink bg-ink object-cover"
+    />
+  );
+}
 
 /**
  * Replace Image: swap individual subject images of a generated meme. Layout, text, styling, punchline
@@ -104,11 +138,7 @@ export default function ReplaceImagesPanel({ meme, isCurrent, onApplied }) {
               return (
                 <li key={a.id || i} className="space-y-2.5 rounded-md border border-line bg-paper/60 p-3">
                   <div className="flex items-center gap-3">
-                    <img
-                      src={`${API_BASE}/api/memes/${memeId}/assets/subject-${i}?v=${meme.currentVersion}-${a.id}`}
-                      alt={`Image ${slot}`}
-                      className="h-16 w-16 shrink-0 rounded border-2 border-ink bg-ink object-cover"
-                    />
+                    <SubjectThumb memeId={memeId} index={i} version={meme.currentVersion || 1} asset={a} />
                     <div className="min-w-0 flex-1 text-[12px] leading-snug text-muted">
                       <p className="flex items-center gap-2 truncate text-[14px] font-semibold text-ink">
                         <Badge tone="ink" size="sm" mono>
@@ -117,7 +147,9 @@ export default function ReplaceImagesPanel({ meme, isCurrent, onApplied }) {
                         <span className="truncate">{a.label || `Image ${slot}`}</span>
                       </p>
                       <p className="mt-0.5">
-                        {sourceTypeText(a)}
+                        {sourceTypeText(a) === 'Source not recorded' && (a.path?.includes('whatsapp') || meme.pipeline === 'manual')
+                          ? 'Uploaded photo'
+                          : sourceTypeText(a)}
                         {a.provider ? ` · ${a.provider}` : ''}
                         {a.sourcePage && (
                           <a href={a.sourcePage} target="_blank" rel="noreferrer noopener" className="ml-1.5 inline-flex items-center gap-0.5 font-semibold text-ink underline decoration-marker decoration-2 underline-offset-2 hover:decoration-ink">

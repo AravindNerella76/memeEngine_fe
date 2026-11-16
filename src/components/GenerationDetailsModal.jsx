@@ -29,13 +29,27 @@ function Panel({ title, icon: Icon, children }) {
 
 function SlotCard({ memeId, slot, identity, index }) {
   const [open, setOpen] = useState(false);
+  const [imgFailed, setImgFailed] = useState(false);
   const sel = slot.selected;
   const rights = sel?.rights;
   return (
     <div className="space-y-3 rounded-md border border-line bg-surface p-3.5">
       <div className="flex gap-3.5">
-        <div className="h-28 w-24 shrink-0 overflow-hidden rounded border-2 border-ink bg-ink">
-          <img src={`${API}/api/memes/${memeId}/assets/subject-${index}`} alt={slot.subject} className="h-full w-full object-cover" />
+        <div className="flex h-28 w-24 shrink-0 items-center justify-center overflow-hidden rounded border-2 border-ink bg-paper-2 text-ink">
+          {imgFailed ? (
+            sel?.sourceUrl ? (
+              <img src={sel.sourceUrl} alt={slot.subject} className="h-full w-full object-cover" />
+            ) : (
+              <ImageIcon className="h-8 w-8 text-muted opacity-40" />
+            )
+          ) : (
+            <img
+              src={`${API}/api/memes/${memeId}/assets/subject-${index}`}
+              alt={slot.subject}
+              onError={() => setImgFailed(true)}
+              className="h-full w-full object-cover"
+            />
+          )}
         </div>
         <div className="min-w-0 flex-1 space-y-1 text-[12.5px] leading-snug text-muted">
           <p className="text-[15px] font-bold text-ink">
