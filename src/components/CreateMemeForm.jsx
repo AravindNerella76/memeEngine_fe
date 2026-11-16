@@ -122,6 +122,7 @@ export default function CreateMemeForm({ onGenerated }) {
   const [fontSizeScale, setFontSizeScale] = useState(1.0);
   const [shadowBlur, setShadowBlur] = useState(8);
   const [canvasPreset, setCanvasPreset] = useState('portrait_4_5');
+  const [subjectFit, setSubjectFit] = useState('cover'); // 'cover' | 'contain'
 
   // Status
   const [loading, setLoading] = useState(false);
@@ -152,6 +153,7 @@ export default function CreateMemeForm({ onGenerated }) {
         setShadowBlur(fx.shadow.blur);
         setFontSizeScale(s.typography.fontSizeScale);
         setCanvasPreset(s.canvas.aspect);
+        if (s.imageProcessing?.subjectFit) setSubjectFit(s.imageProcessing.subjectFit);
         setSettingsLoaded(true);
       })
       .catch(() => {
@@ -333,6 +335,7 @@ export default function CreateMemeForm({ onGenerated }) {
           fontSizeScale: Number(fontSizeScale),
           shadowBlur: Number(shadowBlur),
           canvasPreset,
+          subjectFit,
           reactionFraming: framingToSend(framing) || undefined
         },
         subjectLabels: subjectFiles.map(s => s.label.trim())
@@ -506,11 +509,50 @@ export default function CreateMemeForm({ onGenerated }) {
           </label>
 
           {subjectFiles.length > 0 && (
-            <ul className="mt-5 grid gap-4 sm:grid-cols-2 md:grid-cols-4">
+            <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-line bg-surface p-3">
+              <div>
+                <span className="text-[13px] font-semibold text-ink">Subject Framing & Fit:</span>
+                <span className="ml-2 text-[12px] text-muted">
+                  {subjectFit === 'contain'
+                    ? 'Fit whole image (perfect for tweets, news screenshots & quotes — nothing cut off)'
+                    : 'Fill & crop (standard for full-bleed photos and character portraits)'}
+                </span>
+              </div>
+              <div className="inline-flex rounded-lg border border-line-strong bg-paper p-0.5 text-[12px] font-medium shadow-xs">
+                <button
+                  type="button"
+                  onClick={() => setSubjectFit('cover')}
+                  className={cn(
+                    'rounded-md px-3 py-1 transition-all',
+                    subjectFit === 'cover' ? 'bg-ink font-semibold text-paper shadow-sm' : 'text-muted hover:text-ink'
+                  )}
+                >
+                  Fill & Crop
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSubjectFit('contain')}
+                  className={cn(
+                    'rounded-md px-3 py-1 transition-all',
+                    subjectFit === 'contain' ? 'bg-ink font-semibold text-paper shadow-sm' : 'text-muted hover:text-ink'
+                  )}
+                >
+                  Fit Whole Image (No Crop)
+                </button>
+              </div>
+            </div>
+          )}
+
+          {subjectFiles.length > 0 && (
+            <ul className="mt-4 grid gap-4 sm:grid-cols-2 md:grid-cols-4">
               {subjectFiles.map((item, idx) => (
                 <li key={item.id} className="flex animate-pop flex-col overflow-hidden rounded-lg border border-line-strong bg-surface">
                   <div className="relative aspect-square bg-ink">
-                    <img src={item.preview} alt={`Subject ${idx + 1}`} className="h-full w-full object-cover" />
+                    <img
+                      src={item.preview}
+                      alt={`Subject ${idx + 1}`}
+                      className={cn('h-full w-full', subjectFit === 'contain' ? 'object-contain p-1.5' : 'object-cover')}
+                    />
                     <Badge tone="ink" mono size="sm" className="absolute left-2 top-2">
                       Slot {idx + 1}
                     </Badge>
