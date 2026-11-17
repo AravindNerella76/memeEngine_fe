@@ -13,3 +13,5 @@ import '@fontsource/ramabhadra/latin-400.css';
 import '@fontsource/ramabhadra/telugu-400.css';
 import '@fontsource/mandali/latin-400.css';
 import '@fontsource/mandali/telugu-400.css';
+import '@fontsource-variable/anek-telugu/index.css';
+import '@fontsource/anek-telugu/index.css';

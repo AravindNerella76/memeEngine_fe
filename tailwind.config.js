@@ -28,7 +28,7 @@ export default {
         sans: ['"Instrument Sans Variable"', '"Instrument Sans"', '"Noto Sans Telugu Variable"', '"Noto Sans Telugu"', 'system-ui', 'sans-serif'],
         display: ['"Bricolage Grotesque Variable"', '"Bricolage Grotesque"', '"Instrument Sans Variable"', '"Noto Sans Telugu Variable"', 'system-ui', 'sans-serif'],
         mono: ['"JetBrains Mono Variable"', '"JetBrains Mono"', 'ui-monospace', 'SFMono-Regular', 'Menlo', 'Consolas', 'monospace'],
-        telugu: ['"Noto Sans Telugu Variable"', '"Noto Sans Telugu"', 'Ramabhadra', 'sans-serif'],
+        telugu: ['"Anek Telugu Variable"', '"Anek Telugu"', '"Noto Sans Telugu Variable"', '"Noto Sans Telugu"', 'Ramabhadra', 'sans-serif'],
         meme: ['Anton', '"Arial Black"', 'Impact', 'sans-serif']
       },
       fontSize: {

@@ -131,7 +131,7 @@ export default function CreateMemeForm({ onGenerated }) {
   // Installed fonts and the saved Settings (the design fields below start from them)
   const [fonts, setFonts] = useState({
     english: ['Arial Black', 'Anton', 'Impact', 'Intrepid ExtraBold', 'Intrepid'],
-    telugu: ['Ramabhadra', 'Mandali', 'Noto Sans Telugu']
+    telugu: ['Ramabhadra', 'Mandali', 'Noto Sans Telugu', 'Anek Telugu']
   });
   const [settingsLoaded, setSettingsLoaded] = useState(false);
   useEffect(() => {

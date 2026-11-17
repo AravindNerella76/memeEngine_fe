@@ -67,7 +67,7 @@ export default function PunchlinePreview({ image, text, style: given, englishFon
     };
   }, [english, style.telugu, weight, text]);
 
-  const family = `"${english}", "${style.telugu}", "Noto Sans Telugu Variable", "Noto Sans Telugu", "Arial Black", sans-serif`;
+  const family = `"${english}", "${style.telugu}", "Anek Telugu Variable", "Anek Telugu", "Noto Sans Telugu Variable", "Noto Sans Telugu", "Arial Black", sans-serif`;
   const lines = useMemo(
     () => (text && text.trim() ? wrap(text, `${weight} ${style.size}px ${family}`, CANVAS_W * 0.9) : []),
     // eslint-disable-next-line react-hooks/exhaustive-deps
