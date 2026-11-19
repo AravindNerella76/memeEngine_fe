@@ -4,12 +4,18 @@ import { markReactionUsed } from '../lib/reactionLibrary';
 import ReactionPicker from './reactions/ReactionPicker';
 import ReactionFraming from './reactions/ReactionFraming';
 import { framingToSend } from '../lib/reactionFraming';
-import { ArrowLeft, ArrowRight, Check, Film, Plus, Sparkles, Trash2, Upload, Wand2, X } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Check, Eye, Film, GripVertical, Plus, Sparkles, Trash2, Upload, Wand2, X } from 'lucide-react';
 import { SAMPLE_TEMPLATES } from './SampleTemplates';
 import { API_BASE, apiFetch } from '../api';
 import { cachedJSON } from '../lib/queryCache';
 import { ColorField, NumberField, Segmented, SelectField } from './settings/controls';
-import { Alert, Badge, Button, Card, Field, ImageDrop, Input, PageHeader, Textarea, cn, isImageFile, makeImageItem, useDocumentTitle, useImageSlot, useAvailability, useToast } from '../ui';
+import LivePreview from './create/LivePreview';
+import { useManualPreview } from './create/useManualPreview';
+import { clearDraft, loadDraft, saveDraft } from './create/draft';
+import { Alert, Badge, Button, Card, Dialog, Field, ImageDrop, Input, PageHeader, Textarea, cn, isImageFile, makeImageItem, useDocumentTitle, useImageSlot, useAvailability, useToast } from '../ui';
+
+/** Shown in the preview until the person types theirs (never sent for a real meme). */
+const PLACEHOLDER_PUNCHLINE = 'Your punchline appears here';
 
 const MEME_TYPES = [
   { id: 'facts_collage', title: 'Facts / Collage', desc: 'Grid arrangement with individual cell labels' },
@@ -127,6 +133,42 @@ export default function CreateMemeForm({ onGenerated }) {
   // Status
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [previewOpen, setPreviewOpen] = useState(false); // the preview as a sheet (phones; large screens show it beside the form)
+  const [dragFrom, setDragFrom] = useState(null); // index of the subject tile being dragged
+  const [dragOverIndex, setDragOverIndex] = useState(null);
+
+  // An unfinished meme comes back after a refresh: the words only (pictures cannot be kept by the browser)
+  const [draftRestored, setDraftRestored] = useState(false);
+  const draftReady = useRef(false);
+  useEffect(() => {
+    const d = loadDraft();
+    if (d) {
+      setTopic(d.topic);
+      setHeadline(d.headline);
+      setStatement(d.statement);
+      setBulletPoints(d.bulletPoints);
+      setReactionContext(d.reactionContext);
+      setPunchline(d.punchline);
+      if (MEME_TYPES.some(t => t.id === d.memeType)) setMemeType(d.memeType);
+      setDraftRestored(true);
+    }
+    draftReady.current = true;
+  }, []);
+  useEffect(() => {
+    if (!draftReady.current) return undefined;
+    const t = setTimeout(() => saveDraft({ topic, headline, statement, bulletPoints, reactionContext, punchline, memeType }), 500);
+    return () => clearTimeout(t);
+  }, [topic, headline, statement, bulletPoints, reactionContext, punchline, memeType]);
+  const startFresh = () => {
+    clearDraft();
+    setTopic('');
+    setHeadline('');
+    setStatement('');
+    setBulletPoints([]);
+    setReactionContext('');
+    setPunchline('');
+    setDraftRestored(false);
+  };
 
   // Installed fonts and the saved Settings (the design fields below start from them)
   const [fonts, setFonts] = useState({
@@ -243,6 +285,20 @@ export default function CreateMemeForm({ onGenerated }) {
     setSubjectFiles(updated);
   };
 
+  // Drag a tile by its grip to a new place (the arrows do the same for keyboard and touch)
+  const dropSubject = to => {
+    if (dragFrom !== null && to !== null && dragFrom !== to) {
+      setSubjectFiles(prev => {
+        const next = [...prev];
+        const [moved] = next.splice(dragFrom, 1);
+        next.splice(to, 0, moved);
+        return next;
+      });
+    }
+    setDragFrom(null);
+    setDragOverIndex(null);
+  };
+
   // Remove subject image
   const removeSubject = index => {
     URL.revokeObjectURL(subjectFiles[index]?.preview);
@@ -269,25 +325,79 @@ export default function CreateMemeForm({ onGenerated }) {
   };
   const removeBulletPoint = index => setBulletPoints(prev => prev.filter((_, i) => i !== index));
 
+  // What the engine is asked for: the same body for the real meme and for the preview
+  const buildPayload = punchlineText => ({
+    content: {
+      topic,
+      headline: headline.trim() || undefined,
+      statement: statement.trim() || undefined,
+      bulletPoints: bulletPoints.filter(b => b.trim().length > 0),
+      reactionContext: reactionContext.trim() || undefined,
+      punchline: punchlineText,
+      itemLabels: subjectFiles.map(s => s.label.trim())
+    },
+    layout: {
+      memeType,
+      arrangement: 'auto'
+    },
+    design: {
+      fontFamily,
+      teluguFontFamily,
+      primaryTextColor,
+      secondaryTextColor,
+      outlineColor,
+      outlineThickness: Number(outlineThickness),
+      fontSizeScale: Number(fontSizeScale),
+      shadowBlur: Number(shadowBlur),
+      canvasPreset,
+      subjectFit,
+      reactionFraming: framingToSend(framing) || undefined
+    },
+    subjectLabels: subjectFiles.map(s => s.label.trim())
+  });
+
+  // The live preview: drawn by the engine exactly as the meme will be, a moment after you stop changing things
+  const previewReason = subjectFiles.length === 0 ? 'Add a subject image and your meme appears here, redrawn as you type.' : null;
+  const preview = useManualPreview({
+    enabled: !previewReason,
+    subjectFiles,
+    reactionFile,
+    payload: buildPayload(punchline.trim() || PLACEHOLDER_PUNCHLINE)
+  });
+
+  // Several pictures at once from the clipboard (Ctrl+V) become subject images
+  useEffect(() => {
+    const onPaste = e => {
+      const files = [...(e.clipboardData?.files || [])].filter(isImageFile);
+      if (!files.length) return; // text pasted into a field is none of our business
+      e.preventDefault();
+      addSubjects(files);
+      toast.success(files.length === 1 ? 'Pasted as a subject image.' : `Pasted ${files.length} subject images.`);
+    };
+    window.addEventListener('paste', onPaste);
+    return () => window.removeEventListener('paste', onPaste);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [toast]);
+
   // Submit & generate meme
   const handleGenerate = async () => {
     setError(null);
 
     // Validation
-    if (!topic && !headline && !statement) {
-      setError('Please provide at least a topic, headline, or statement');
+    if (!topic.trim() && !headline.trim() && !statement.trim()) {
+      setError('Add a topic, a headline or a statement first.');
       return;
     }
-    if (!punchline) {
-      setError('Please enter a Telugu punchline (or English text) for the reaction section');
+    if (!punchline.trim()) {
+      setError('Type your punchline first (Telugu or English).');
       return;
     }
     if (subjectFiles.length === 0) {
-      setError('Please upload at least 1 subject image');
+      setError('Add at least one subject image.');
       return;
     }
     if (!reactionFile) {
-      setError('Please upload a reaction / punchline movie image');
+      setError('Add your reaction image.');
       return;
     }
     if (needsChoice) {
@@ -311,37 +421,7 @@ export default function CreateMemeForm({ onGenerated }) {
         if (reactionFile.libraryId) markReactionUsed(reactionFile.libraryId);
       }
 
-      const payload = {
-        content: {
-          topic,
-          headline: headline.trim() || undefined,
-          statement: statement.trim() || undefined,
-          bulletPoints: bulletPoints.filter(b => b.trim().length > 0),
-          reactionContext: reactionContext.trim() || undefined,
-          punchline: punchline.trim(),
-          itemLabels: subjectFiles.map(s => s.label.trim())
-        },
-        layout: {
-          memeType,
-          arrangement: 'auto'
-        },
-        design: {
-          fontFamily,
-          teluguFontFamily,
-          primaryTextColor,
-          secondaryTextColor,
-          outlineColor,
-          outlineThickness: Number(outlineThickness),
-          fontSizeScale: Number(fontSizeScale),
-          shadowBlur: Number(shadowBlur),
-          canvasPreset,
-          subjectFit,
-          reactionFraming: framingToSend(framing) || undefined
-        },
-        subjectLabels: subjectFiles.map(s => s.label.trim())
-      };
-
-      formData.append('payload', JSON.stringify(payload));
+      formData.append('payload', JSON.stringify(buildPayload(punchline.trim())));
 
       const res = await apiFetch(`${API_BASE}/api/memes/upload-and-generate`, {
         method: 'POST',
@@ -354,6 +434,7 @@ export default function CreateMemeForm({ onGenerated }) {
       }
 
       const memeRecord = await res.json();
+      clearDraft(); // it is a meme now, not a draft
       onGenerated(memeRecord);
     } catch (err) {
       console.error('Generation error:', err);
@@ -412,7 +493,23 @@ export default function CreateMemeForm({ onGenerated }) {
         </div>
       )}
 
-      <div className="space-y-5">
+      {draftRestored && (
+        <Alert
+          tone="info"
+          compact
+          className="mb-6"
+          action={
+            <Button size="sm" variant="secondary" onClick={startFresh}>
+              Start fresh
+            </Button>
+          }
+        >
+          <strong className="font-bold">Your unfinished words are back.</strong> Pictures can&rsquo;t be kept by the browser, so add them again.
+        </Alert>
+      )}
+
+      <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_360px] lg:items-start xl:grid-cols-[minmax(0,1fr)_400px]">
+      <div className="min-w-0 space-y-5">
         {/* 1. Text */}
         <Step n={1} title="Words" hint="What the meme says. A topic, headline or statement is needed, plus a punchline." done={textDone}>
           <div className="space-y-5">
@@ -458,8 +555,21 @@ export default function CreateMemeForm({ onGenerated }) {
               <Field label="Reaction tag" optional hint="A short caption on the reaction panel.">
                 {({ id }) => <Input id={id} value={reactionContext} onChange={e => setReactionContext(e.target.value)} placeholder="e.g. * BOSS AND AKHIL or * THEATRE AUDIENCE" />}
               </Field>
-              <Field label="Punchline" hint="Telugu or English. Used exactly as typed.">
-                {({ id }) => <Input id={id} value={punchline} onChange={e => setPunchline(e.target.value)} placeholder="e.g. చిన్న పాజిటివ్ టాక్ వచ్చినా 500 CR కొట్టే దాకా ఆగదు!" className="telugu-input font-semibold" />}
+              <Field
+                label="Punchline"
+                hint="Telugu or English. Used exactly as typed."
+                right={<span className="tabular font-mono text-[12px] text-muted" aria-live="off">{punchline.length} chars</span>}
+              >
+                {({ id }) => (
+                  <Textarea
+                    id={id}
+                    rows={2}
+                    value={punchline}
+                    onChange={e => setPunchline(e.target.value)}
+                    placeholder="e.g. చిన్న పాజిటివ్ టాక్ వచ్చినా 500 CR కొట్టే దాకా ఆగదు!"
+                    className="telugu-input font-semibold"
+                  />
+                )}
               </Field>
             </div>
           </div>
@@ -546,7 +656,23 @@ export default function CreateMemeForm({ onGenerated }) {
           {subjectFiles.length > 0 && (
             <ul className="mt-4 grid gap-4 sm:grid-cols-2 md:grid-cols-4">
               {subjectFiles.map((item, idx) => (
-                <li key={item.id} className="flex animate-pop flex-col overflow-hidden rounded-lg border border-line-strong bg-surface">
+                <li
+                  key={item.id}
+                  onDragOver={e => {
+                    if (dragFrom === null) return;
+                    e.preventDefault();
+                    setDragOverIndex(idx);
+                  }}
+                  onDrop={e => {
+                    e.preventDefault();
+                    dropSubject(idx);
+                  }}
+                  className={cn(
+                    'flex animate-pop flex-col overflow-hidden rounded-lg border bg-surface transition-[opacity,box-shadow,border-color]',
+                    dragFrom === idx ? 'border-line-strong opacity-50' : 'border-line-strong',
+                    dragFrom !== null && dragOverIndex === idx && dragFrom !== idx && 'border-ink shadow-hard-sm'
+                  )}
+                >
                   <div className="relative aspect-square bg-ink">
                     <img
                       src={item.preview}
@@ -574,7 +700,30 @@ export default function CreateMemeForm({ onGenerated }) {
                       className="!py-2 !text-[13px]"
                     />
                     <div className="flex items-center justify-between border-t border-line pt-2">
-                      <span className="font-mono text-[11.5px] text-muted">Order {idx + 1}</span>
+                      <span className="flex items-center gap-1 font-mono text-[11.5px] text-muted">
+                        {subjectFiles.length > 1 && (
+                          <span
+                            draggable
+                            onDragStart={e => {
+                              setDragFrom(idx);
+                              e.dataTransfer.effectAllowed = 'move';
+                              e.dataTransfer.setData('text/plain', String(idx));
+                              const tile = e.currentTarget.closest('li');
+                              if (tile) e.dataTransfer.setDragImage(tile, 24, 24);
+                            }}
+                            onDragEnd={() => {
+                              setDragFrom(null);
+                              setDragOverIndex(null);
+                            }}
+                            title="Drag to change the order"
+                            aria-hidden="true"
+                            className="-ml-1 grid h-7 w-6 cursor-grab place-items-center rounded text-muted hover:bg-ink/[0.07] hover:text-ink active:cursor-grabbing"
+                          >
+                            <GripVertical className="h-4 w-4" />
+                          </span>
+                        )}
+                        Order {idx + 1}
+                      </span>
                       <span className="flex gap-1">
                         <Button variant="ghost" size="icon-sm" disabled={idx === 0} onClick={() => moveSubject(idx, -1)} aria-label="Move earlier">
                           <ArrowLeft className="h-3.5 w-3.5" />
@@ -678,9 +827,16 @@ export default function CreateMemeForm({ onGenerated }) {
         </Step>
       </div>
 
+      {/* Large screens: the meme beside the form, following you down it */}
+      <aside className="hidden lg:sticky lg:top-8 lg:block" aria-label="Preview">
+        <LivePreview preview={preview} reason={previewReason} placeholderPunchline={!punchline.trim()} />
+      </aside>
+      </div>
+
       {/* Generate bar */}
-      <div className="sticky bottom-[84px] z-30 mt-6 flex items-center justify-between gap-4 rounded-lg border-2 border-ink bg-surface p-3.5 shadow-hard md:bottom-6">
-        <p className={cn('text-[13px]', net.ok ? 'text-muted' : 'font-semibold text-bad')}>
+      <div className="sticky bottom-[84px] z-30 mt-6 flex items-center justify-between gap-3 rounded-lg border-2 border-ink bg-surface p-3 shadow-hard sm:p-3.5 md:bottom-6">
+        {/* the count is for roomy screens; on a phone the two buttons need the whole bar. An offline notice always shows. */}
+        <p className={cn('min-w-0 text-[13px]', net.ok ? 'hidden text-muted sm:block' : 'font-semibold text-bad')}>
           {net.ok ? (
             <>
               <strong className="tabular font-mono text-ink">{subjectFiles.length}</strong> subject {subjectFiles.length === 1 ? 'image' : 'images'} + <strong className="tabular font-mono text-ink">{reactionFile ? 1 : 0}</strong> reaction image
@@ -689,10 +845,20 @@ export default function CreateMemeForm({ onGenerated }) {
             net.reason
           )}
         </p>
-        <Button variant="primary" size="lg" loading={loading} disabled={!net.ok} onClick={handleGenerate} leftIcon={<Wand2 className="h-[18px] w-[18px]" />}>
-          {loading ? 'Making the meme…' : 'Generate meme'}
-        </Button>
+        <div className={cn('flex min-w-0 items-center gap-2', net.ok ? 'w-full sm:w-auto' : 'shrink-0')}>
+          <Button variant="secondary" size="lg" className="shrink-0 lg:hidden" onClick={() => setPreviewOpen(true)} leftIcon={<Eye className="h-[18px] w-[18px]" />} aria-label="Show the preview">
+            Preview
+          </Button>
+          <Button variant="primary" size="lg" className="min-w-0 flex-1 sm:flex-none" loading={loading} disabled={!net.ok} onClick={handleGenerate} leftIcon={<Wand2 className="h-[18px] w-[18px]" />}>
+            {loading ? 'Making the meme…' : 'Generate meme'}
+          </Button>
+        </div>
       </div>
+
+      {/* Phones: the same preview as a sheet */}
+      <Dialog open={previewOpen} onClose={() => setPreviewOpen(false)} title="Preview" description="Your meme, drawn the way it will be made." size="md" bodyClassName="!p-0">
+        <LivePreview preview={preview} reason={previewReason} placeholderPunchline={!punchline.trim()} className="!rounded-none !border-0 !shadow-none" />
+      </Dialog>
     </div>
   );
 }

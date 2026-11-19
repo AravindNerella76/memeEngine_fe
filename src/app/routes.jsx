@@ -74,8 +74,7 @@ export const PAGES = [
     group: 'Make',
     mobile: true,
     keywords: 'meme viral adapt reference screenshot punchline generate',
-    component: eagerPage(ViralAdaptationForm),
-    props: navigate => ({ onGenerated: openMeme(navigate, 'viral') }),
+    component: eagerPage(ViralAdaptationForm), // opens its meme itself (see adapt/AdaptationProvider)
     prefetch: () => warm('/api/settings', { ttl: 60_000 })
   },
   {

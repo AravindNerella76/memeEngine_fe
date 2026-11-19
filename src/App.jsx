@@ -9,7 +9,8 @@ import { HIDDEN_PAGES, NAV_GROUPS, PAGES, REDIRECTS, TAB_ITEMS, pageForPath, pre
 import { MOD_KEY, isTypingTarget } from './app/platform';
 import { BRAND } from './brand';
 import { API_BASE } from './api';
-import { Button, LogoMark, cn, useBusy, useConfirm, useOnline, useSystemStatus } from './ui';
+import { Button, Elapsed, LogoMark, cn, useBusy, useConfirm, useOnline, useSystemStatus } from './ui';
+import { currentStageTitle, useAdaptation } from './adapt/AdaptationProvider';
 
 // The Ctrl+K palette is downloaded the first time it is opened (or while the app is idle), never with the first screen.
 const loadPalette = () => import('./app/CommandPalette');
@@ -155,6 +156,36 @@ function EngineStatus() {
   );
 }
 
+/**
+ * A meme is being made and you are on another page: say so, with the stage and the clock, and one tap back to it.
+ * Not shown on the page that already shows the progress.
+ */
+function JobPill({ variant }) {
+  const job = useAdaptation();
+  const { pathname } = useLocation();
+  if (!job.running || pathname === '/') return null;
+  const dark = variant === 'dark';
+  return (
+    <NavLink
+      to="/"
+      aria-label="A meme is being made. Open its progress"
+      className={cn(
+        'group flex items-center gap-3 rounded-md border px-3 py-2.5 text-left transition-colors',
+        dark ? 'border-marker/40 bg-marker/10 text-paper hover:bg-marker/20' : 'border-2 border-ink bg-marker text-ink shadow-hard-sm'
+      )}
+    >
+      <span className={cn('h-8 w-1.5 shrink-0 rounded-full', dark ? 'working-bar animate-stripes' : 'animate-pulse bg-ink')} aria-hidden="true" />
+      <span className="min-w-0 flex-1 text-[13px] leading-tight">
+        <span className="block font-bold">Making your meme</span>
+        <span className={cn('block truncate text-[12px]', dark ? 'text-paper/70' : 'text-ink/70')}>{currentStageTitle(job.view)}</span>
+      </span>
+      <span className={cn('tabular font-mono text-[14px] font-semibold', dark && 'text-marker')}>
+        <Elapsed since={job.startedAt} />
+      </span>
+    </NavLink>
+  );
+}
+
 function Sidebar({ onOpenPalette }) {
   return (
     <aside className="on-ink fixed inset-y-0 left-0 z-50 hidden w-[252px] flex-col bg-ink text-paper md:flex">
@@ -218,6 +249,7 @@ function Sidebar({ onOpenPalette }) {
       </nav>
 
       <div className="space-y-3 border-t border-white/10 p-3">
+        <JobPill variant="dark" />
         <EngineStatus />
         <div className="space-y-1">
           <a
@@ -445,6 +477,9 @@ export default function App() {
 
       <div className="md:pl-[252px]">
         <main id="main" className="mx-auto w-full max-w-[1240px] px-4 pb-32 pt-6 sm:px-6 md:pb-16 md:pt-10 lg:px-10">
+          <div className="mb-5 empty:hidden md:hidden">
+            <JobPill />
+          </div>
           <ConnectionBanner />
           <StaticLoginBanner />
           <ErrorBoundary resetKey={location.pathname}>

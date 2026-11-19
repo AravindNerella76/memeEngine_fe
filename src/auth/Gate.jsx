@@ -3,6 +3,7 @@ import App from '../App';
 import { useAuth } from './AuthProvider';
 import LoginScreen, { Splash } from './LoginScreen';
 import SignInForm from './SignInForm';
+import { AdaptationProvider } from '../adapt/AdaptationProvider';
 import { Dialog, StatusProvider } from '../ui';
 
 /** A session that ended while the studio was open: it stays on screen behind this dialog, nothing is lost. */
@@ -29,8 +30,10 @@ export default function Gate() {
   if (status === 'authed' || expired) {
     return (
       <StatusProvider>
-        <App />
-        {expired && <SessionEndedDialog />}
+        <AdaptationProvider>
+          <App />
+          {expired && <SessionEndedDialog />}
+        </AdaptationProvider>
       </StatusProvider>
     );
   }

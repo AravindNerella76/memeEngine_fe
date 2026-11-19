@@ -5,6 +5,10 @@ import {
   Check,
   Clock,
   Film,
+  Hand,
+  Loader2,
+  WifiOff,
+  X,
   History,
   Image as ImageIcon,
   ImagePlus,
@@ -16,13 +20,13 @@ import {
   Type,
   Wand2
 } from 'lucide-react';
-import { API_BASE, apiFetch } from '../api';
 import { cachedJSON } from '../lib/queryCache';
 import { MOD_KEY } from '../app/platform';
 import { markReactionUsed, reactionAsFile } from '../lib/reactionLibrary';
 import ReactionPicker from './reactions/ReactionPicker';
 import ReactionFraming from './reactions/ReactionFraming';
 import { framingToSend } from '../lib/reactionFraming';
+import { STAGES, currentStageTitle, useAdaptation } from '../adapt/AdaptationProvider';
 import ImageSourcesStatus from './ImageSourcesStatus';
 import ViralImageChoices from './imageChoice/ViralImageChoices';
 import PunchlinePreview from './PunchlinePreview';
@@ -44,7 +48,6 @@ import {
   isImageFile,
   makeImageItem,
   useAvailability,
-  useBusyGuard,
   useDocumentTitle,
   useImageSlot,
   useToast
@@ -85,13 +88,6 @@ const VIRAL_SAMPLES = [
 
 // Only fonts that are installed on the server can be rendered.
 const AVAILABLE_FONTS = ['Arial Black', 'Anton', 'Impact', 'Intrepid ExtraBold'];
-
-// What the engine does while you wait (timing is an estimate; the server reports no live progress).
-const PHASES = [
-  { title: 'Reading the reference', text: 'Layout, image slots, subjects and their context' },
-  { title: 'Finding and verifying pictures', text: 'Identity checks, internet search, ranking and a visual check of each candidate' },
-  { title: 'Setting the type', text: 'Your style, your reaction image and your exact punchline' }
-];
 
 /** One numbered step of the form. Turns yellow with a tick once its input is in. */
 function Step({ n, title, hint, done, id, children, aside }) {
@@ -170,8 +166,69 @@ function WaitTip() {
   );
 }
 
-/** Live timeline shown while the server works (2–4 minutes). */
-function Progress({ step, startedAt }) {
+const SLOT_LOOK = {
+  waiting: { label: 'waiting', icon: null },
+  searching: { label: 'searching', icon: Loader2 },
+  found: { label: 'found', icon: Check },
+  yours: { label: 'your picture', icon: Hand },
+  failed: { label: 'not found', icon: X }
+};
+
+/** One picture of the meme and where the engine is with it. */
+function SlotRow({ slot }) {
+  const look = SLOT_LOOK[slot.state] || SLOT_LOOK.waiting;
+  const Icon = look.icon;
+  return (
+    <li className="flex items-start gap-2.5 py-1 text-[12.5px] leading-snug">
+      <span
+        className={cn(
+          'mt-px grid h-[18px] w-[18px] shrink-0 place-items-center rounded-full',
+          (slot.state === 'found' || slot.state === 'yours') && 'bg-marker text-ink',
+          slot.state === 'searching' && 'text-marker',
+          slot.state === 'failed' && 'bg-bad text-white',
+          slot.state === 'waiting' && 'border border-white/20'
+        )}
+        aria-hidden="true"
+      >
+        {Icon && <Icon className={cn('h-3 w-3', slot.state === 'searching' && 'animate-spin')} strokeWidth={slot.state === 'searching' ? 2.4 : 3} />}
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className={cn('font-semibold', slot.state === 'waiting' ? 'text-paper/45' : 'text-white')}>{slot.subject}</span>
+        <span className="sr-only"> {look.label}</span>
+        {slot.note && slot.state !== 'waiting' && <span className="block text-paper/60">{slot.note}</span>}
+      </span>
+    </li>
+  );
+}
+
+/** The engine's own words as it works, newest last: the part of the wait that has character. */
+function LiveFeed({ log }) {
+  if (!log?.length) return null;
+  const lines = log.slice(-4);
+  return (
+    <ul className="mt-4 space-y-1 rounded-md bg-black/30 px-3 py-2.5 font-mono text-[11.5px] leading-snug text-paper/75" aria-label="What the engine just did">
+      {lines.map((l, i) => {
+        const s = Math.floor(l.atMs / 1000);
+        return (
+          <li key={`${l.atMs}-${i}`} className={cn('flex gap-2.5', i === lines.length - 1 && 'text-white')}>
+            <span className="tabular shrink-0 text-marker/80">
+              {Math.floor(s / 60)}:{String(s % 60).padStart(2, '0')}
+            </span>
+            <span className="min-w-0 break-words">{l.text}</span>
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
+
+/**
+ * Live progress while the engine works (usually 2–4 minutes). Every line comes from the engine itself: a stage is
+ * active only while the engine is inside it, and each picture shows its own search.
+ */
+function Progress({ view, startedAt, reconnecting }) {
+  // before the engine has answered (the inputs are still going up) the first stage shows as the current one
+  const stages = view?.stages || STAGES.map((s, i) => ({ id: s.id, state: i === 0 ? 'active' : 'pending', note: i === 0 ? 'Sending your inputs to the engine' : undefined }));
   return (
     <Card tone="stage" pad="none" className="overflow-hidden animate-pop" role="status" aria-live="polite">
       <div className="working-bar h-2 animate-stripes" aria-hidden="true" />
@@ -189,37 +246,57 @@ function Progress({ step, startedAt }) {
           </div>
         </div>
 
-        <ol className="mt-6 space-y-1">
-          {PHASES.map((p, i) => {
-            const idx = i + 1;
-            const state = step > idx ? 'done' : step === idx ? 'active' : 'todo';
+        {reconnecting && (
+          <p className="mt-4 flex items-start gap-2 rounded-md bg-white/[0.07] px-3 py-2 text-[12.5px] leading-snug text-paper/85" role="alert">
+            <WifiOff className="mt-0.5 h-3.5 w-3.5 shrink-0 text-marker" aria-hidden="true" />
+            Lost touch with the engine for a moment. Your meme keeps being made; this reconnects by itself.
+          </p>
+        )}
+
+        <ol className="mt-5 space-y-1">
+          {STAGES.map((p, i) => {
+            const st = stages.find(x => x.id === p.id) || { state: 'pending' };
+            const state = st.state === 'skipped' ? 'skipped' : st.state === 'done' ? 'done' : st.state === 'active' ? 'active' : 'todo';
+            const showSlots = p.id === 'discovery' && view?.slots?.length > 0 && (st.state === 'active' || st.state === 'done');
             return (
-              <li key={p.title} className={cn('flex gap-3.5 rounded-md p-3 transition-colors', state === 'active' && 'bg-white/[0.07]')}>
-                <span
-                  className={cn(
-                    'mt-0.5 grid h-6 w-6 shrink-0 place-items-center rounded-full text-[12px] font-bold transition-colors',
-                    state === 'done' && 'bg-marker text-ink',
-                    state === 'active' && 'animate-pulse-ring bg-marker text-ink',
-                    state === 'todo' && 'border border-white/20 text-paper/40'
-                  )}
-                  aria-hidden="true"
-                >
-                  {state === 'done' ? <Check className="h-3.5 w-3.5" strokeWidth={3} /> : idx}
-                </span>
-                <span className="min-w-0">
-                  <span className={cn('block text-[14px] font-semibold', state === 'todo' ? 'text-paper/45' : 'text-white')}>{p.title}</span>
-                  <span className={cn('block text-[12.5px] leading-snug', state === 'todo' ? 'text-paper/30' : 'text-paper/65')}>{p.text}</span>
-                </span>
-                <span className="sr-only">{state === 'done' ? 'done' : state === 'active' ? 'in progress' : 'waiting'}</span>
+              <li key={p.id} className={cn('rounded-md p-3 transition-colors', state === 'active' && 'bg-white/[0.07]')}>
+                <div className="flex gap-3.5">
+                  <span
+                    className={cn(
+                      'mt-0.5 grid h-6 w-6 shrink-0 place-items-center rounded-full text-[12px] font-bold transition-colors',
+                      state === 'done' && 'bg-marker text-ink',
+                      state === 'skipped' && 'border border-marker/60 text-marker',
+                      state === 'active' && 'animate-pulse-ring bg-marker text-ink',
+                      state === 'todo' && 'border border-white/20 text-paper/40'
+                    )}
+                    aria-hidden="true"
+                  >
+                    {state === 'done' || state === 'skipped' ? <Check className="h-3.5 w-3.5" strokeWidth={3} /> : i + 1}
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className={cn('block text-[14px] font-semibold', state === 'todo' ? 'text-paper/45' : 'text-white')}>{p.title}</span>
+                    <span className={cn('block text-[12.5px] leading-snug', state === 'todo' ? 'text-paper/30' : 'text-paper/65')}>{st.note && state !== 'todo' ? st.note : p.text}</span>
+                  </span>
+                  <span className="sr-only">{state === 'done' ? 'done' : state === 'skipped' ? 'not needed' : state === 'active' ? 'in progress' : 'waiting'}</span>
+                </div>
+                {showSlots && (
+                  <ul className="ml-[38px] mt-2 border-l border-white/15 pl-3.5" aria-label="Pictures">
+                    {view.slots.map(s => (
+                      <SlotRow key={s.slotId} slot={s} />
+                    ))}
+                  </ul>
+                )}
               </li>
             );
           })}
         </ol>
 
+        <LiveFeed log={view?.log} />
+
         <div className="mt-5 border-t border-white/10 pt-4">
           <p className="flex items-start gap-2 text-[12.5px] leading-snug text-paper/60">
             <Clock className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />
-            Keep this tab open. Steps are estimated from typical timing. The result opens by itself when it is ready.
+            You can leave this page or close the tab. The engine keeps going, and the meme opens here, or is waiting in My Memes, when it is ready.
           </p>
           <div aria-hidden="true">
             <WaitTip />
@@ -230,7 +307,7 @@ function Progress({ step, startedAt }) {
   );
 }
 
-export default function ViralAdaptationForm({ onGenerated }) {
+export default function ViralAdaptationForm() {
   const toast = useToast();
   const net = useAvailability({ internet: true }); // generating uses the AI and the internet
 
@@ -305,31 +382,34 @@ export default function ViralAdaptationForm({ onGenerated }) {
   // optional: { draftId, overrides } from "Choose your own pictures" (the analysis is then reused)
   const [imageChoices, setImageChoices] = useState(null);
 
-  // Loading & progress
-  const [loading, setLoading] = useState(false);
+  // The meme being made lives in the app-wide AdaptationProvider: it keeps running (and keeps being followed) when
+  // this page is left, refreshed or closed. This page only shows it.
+  const adapt = useAdaptation();
+  const loading = adapt.running;
   const [sampleLoading, setSampleLoading] = useState(false);
-  const [progressStep, setProgressStep] = useState(0);
-  const [startedAt, setStartedAt] = useState(null);
-  const [error, setError] = useState(null);
-  const [errorDetails, setErrorDetails] = useState(null);
+  // a request the engine refused (bad input, busy); a meme that failed while being made comes from the provider
+  const [refused, setRefused] = useState(null); // { message, details }
   const [picturesOpen, setPicturesOpen] = useState(false);
   const errorRef = useRef(null);
-  const mounted = useRef(true);
-  useEffect(() => {
-    mounted.current = true;
-    return () => {
-      mounted.current = false;
-    };
-  }, []);
+  const failure = refused || (adapt.error ? { message: adapt.error.message, details: adapt.error.details } : null);
+  const error = failure?.message || null;
+  const errorDetails = failure?.details || null;
+  const setError = message => setRefused(message ? { message } : null);
+  const dismissError = () => {
+    setRefused(null);
+    if (adapt.error) adapt.clear();
+  };
 
   // The running clock (a meme takes 2-4 minutes) lives in <Elapsed>, so this big form does not re-render every second.
   useDocumentTitle(loading ? 'Making your meme' : 'Viral Adaptation');
-  useBusyGuard(loading, 'Making your meme');
 
   // Errors appear at the top of the form; bring them into view.
   useEffect(() => {
     if (error && errorRef.current) errorRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
   }, [error]);
+
+  // Opened again while a meme is being made but this page has no inputs (a refresh, or another device started it)
+  const resumed = loading && !referenceFile && !reactionFile;
 
   const inputsReady = [
     { key: 'reference', label: 'Reference screenshot', ok: Boolean(referenceFile), target: 'step-reference' },
@@ -404,97 +484,56 @@ export default function ViralAdaptationForm({ onGenerated }) {
     }
   };
 
-  // Submit
+  // Submit: the engine accepts the three inputs and starts working in the background; the AdaptationProvider follows it
   const handleSubmit = async e => {
     e.preventDefault();
     if (loading) return;
     if (!referenceFile?.file) {
-      setError('Please provide Input 1: Viral Meme Reference Screenshot.');
+      setError('Add the viral reference screenshot first.');
       return;
     }
     if (!reactionFile?.file) {
-      setError('Please provide Input 2: Meme Reacting Image.');
+      setError('Add your reaction image first.');
       return;
     }
     if (!punchline.trim()) {
-      setError('Please provide Input 3: Reacting Image Text (Punchline).');
+      setError('Type your punchline first.');
       return;
     }
 
-    let timer1;
-    let timer2;
+    setRefused(null);
+    if (adapt.error) adapt.clear();
+
+    const formData = new FormData();
+    if (imageChoices?.draftId) {
+      // the reference was analysed (and kept) when the pictures were chosen: no second upload or analysis
+      formData.append('draftId', imageChoices.draftId);
+      if (imageChoices.overrides.length) formData.append('slotOverrides', JSON.stringify(imageChoices.overrides));
+    } else {
+      formData.append('referenceImage', referenceFile.file);
+    }
+    formData.append('reactionImage', reactionFile.file);
+    if (reactionFile.libraryId) markReactionUsed(reactionFile.libraryId); // the quick-pick row learns which ones you use
+    const framingChoice = framingToSend(framing);
+    if (framingChoice) formData.append('reactionFraming', JSON.stringify(framingChoice));
+    formData.append('punchline', punchline.trim());
+    if (reactionContext.trim()) {
+      formData.append('reactionContext', reactionContext.trim());
+    }
+    if (fontFamily) formData.append('fontFamily', fontFamily);
+    if (selectedProviders && selectedProviders.length > 0) {
+      formData.append('selectedProviders', JSON.stringify(selectedProviders));
+    }
+
     try {
-      setLoading(true);
-      setError(null);
-      setErrorDetails(null);
-      setStartedAt(Date.now());
-      setProgressStep(1); // Uploading & AI vision analysing
-
-      const formData = new FormData();
-      if (imageChoices?.draftId) {
-        // the reference was analysed (and kept) when the pictures were chosen: no second upload or analysis
-        formData.append('draftId', imageChoices.draftId);
-        if (imageChoices.overrides.length) formData.append('slotOverrides', JSON.stringify(imageChoices.overrides));
-      } else {
-        formData.append('referenceImage', referenceFile.file);
-      }
-      formData.append('reactionImage', reactionFile.file);
-      if (reactionFile.libraryId) markReactionUsed(reactionFile.libraryId); // the quick-pick row learns which ones you use
-      const framingChoice = framingToSend(framing);
-      if (framingChoice) formData.append('reactionFraming', JSON.stringify(framingChoice));
-      formData.append('punchline', punchline.trim());
-      if (reactionContext.trim()) {
-        formData.append('reactionContext', reactionContext.trim());
-      }
-      if (fontFamily) formData.append('fontFamily', fontFamily);
-      if (selectedProviders && selectedProviders.length > 0) {
-        formData.append('selectedProviders', JSON.stringify(selectedProviders));
-      }
-
-      // Indicative step progression (analysis ~30-60s, then discovery + visual verification per image)
-      timer1 = setTimeout(() => setProgressStep(2), 45000); // image discovery & verification
-      timer2 = setTimeout(() => setProgressStep(3), 150000); // rendering
-
-      const res = await apiFetch(`${API_BASE}/api/memes/adapt-viral`, { method: 'POST', body: formData });
-
-      clearTimeout(timer1);
-      clearTimeout(timer2);
-
-      if (!res.ok) {
-        const errorData = await res.json().catch(() => ({}));
-        if (errorData.details) setErrorDetails(errorData.details);
-        throw new Error(errorData.message || `Adaptation failed with status ${res.status}`);
-      }
-
-      const generatedMeme = await res.json();
-      setProgressStep(4);
-      if (mounted.current) {
-        onGenerated(generatedMeme);
-      } else {
-        // the user left this page while it ran: tell them, do not yank them to another screen
-        toast.push({
-          kind: 'success',
-          title: 'Your meme is ready',
-          text: 'It is saved in My Memes.',
-          action: { label: 'Open it', onClick: () => onGenerated(generatedMeme) }
-        });
-      }
+      await adapt.start(formData);
     } catch (err) {
-      clearTimeout(timer1);
-      clearTimeout(timer2);
       console.error('Viral adaptation error:', err);
       const message =
         err instanceof TypeError && /fetch|network|load failed/i.test(err.message)
-          ? 'Could not reach the backend. Is it running (npm start in memeEngine_be)?'
-          : err.message || 'Failed to adapt viral meme. Please check backend connection.';
-      if (mounted.current) setError(message);
-      else toast.error(message, { title: 'The meme could not be made' });
-    } finally {
-      if (mounted.current) {
-        setLoading(false);
-        setProgressStep(0);
-        setStartedAt(null);
-      }
+          ? 'Could not reach the engine. Is the backend running (npm start in the be folder)?'
+          : err.message || 'The engine did not accept the request.';
+      setRefused({ message, details: err.details });
     }
   };
 
@@ -504,7 +543,7 @@ export default function ViralAdaptationForm({ onGenerated }) {
 
   return (
     <div className="pb-6">
-      {loading && startedAt && <ElapsedTitle since={startedAt} prefix="Making meme" />}
+      {loading && adapt.startedAt && <ElapsedTitle since={adapt.startedAt} prefix="Making meme" />}
       <PageHeader
         eyebrow={
           <>
@@ -576,26 +615,38 @@ export default function ViralAdaptationForm({ onGenerated }) {
                 ))}
               </ul>
             )}
-          </div>
-          <div className="mt-3 flex flex-wrap gap-2">
-            <Button
-              size="sm"
-              variant="primary"
-              className="bg-gradient-to-r from-[#1e6f04] to-[#259800] text-white font-bold shadow-xs hover:shadow-md"
-              onClick={() => {
-                setPicturesOpen(true);
-                setTimeout(() => {
-                  document.getElementById('choose-pictures-section')?.scrollIntoView({ behavior: 'smooth' });
-                }, 50);
-              }}
-            >
-              📸 Upload Your Own Picture for this Slot
-            </Button>
-            <Button size="sm" variant="secondary" onClick={() => setError(null)}>
-              Dismiss
-            </Button>
+            <div className="flex flex-wrap gap-2 pt-2.5">
+              {/* only when a picture was the problem: choosing your own is the way out */}
+              {(errorDetails?.stage === 'identity' || errorDetails?.stage === 'discovery') && (
+                <Button
+                  size="sm"
+                  variant="primary"
+                  leftIcon={<ImagePlus className="h-4 w-4" />}
+                  onClick={() => {
+                    setPicturesOpen(true);
+                    setTimeout(() => {
+                      document.getElementById('choose-pictures-section')?.scrollIntoView({ behavior: 'smooth' });
+                    }, 50);
+                  }}
+                >
+                  Choose the pictures yourself
+                </Button>
+              )}
+              <Button size="sm" variant="secondary" onClick={dismissError}>
+                Dismiss
+              </Button>
+            </div>
           </div>
         </div>
+      )}
+
+      {resumed && (
+        <Card tone="muted" className="mb-6">
+          <p className="text-[15px] font-bold">Your meme is being made</p>
+          <p className="mt-1 max-w-prose text-[13px] leading-relaxed text-muted">
+            It was started earlier, so its three inputs are already with the engine. Progress is on the right. This page opens the meme by itself when it is ready.
+          </p>
+        </Card>
       )}
 
       <form onSubmit={handleSubmit} className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_350px] lg:items-start xl:grid-cols-[minmax(0,1fr)_380px]" noValidate>
@@ -739,7 +790,7 @@ export default function ViralAdaptationForm({ onGenerated }) {
         {/* ---------------- launch panel ---------------- */}
         <aside className="space-y-4 lg:sticky lg:top-8" aria-label="Generate">
           {loading ? (
-            <Progress step={progressStep} startedAt={startedAt} />
+            <Progress view={adapt.view} startedAt={adapt.startedAt} reconnecting={adapt.reconnecting} />
           ) : (
             <Card tone="sticker" pad="md">
               <div className="flex items-center gap-3.5">
@@ -781,7 +832,7 @@ export default function ViralAdaptationForm({ onGenerated }) {
                 Adapt and generate
               </Button>
               <p className="mt-3 text-center text-[12.5px] leading-snug text-muted">
-                {!net.ok ? net.reason : allReady ? 'Takes about 2–4 minutes. Keep this tab open.' : `Still needed: ${missing.join(', ')}.`}
+                {!net.ok ? net.reason : allReady ? 'Takes about 2–4 minutes. You can leave while it works.' : `Still needed: ${missing.join(', ')}.`}
               </p>
             </Card>
           )}
@@ -809,9 +860,12 @@ export default function ViralAdaptationForm({ onGenerated }) {
           {loading ? (
             <>
               <span className="working-bar h-8 w-2 shrink-0 animate-stripes rounded-full" aria-hidden="true" />
-              <span className="min-w-0 flex-1 text-[13px] font-semibold">Making your meme</span>
+              <span className="min-w-0 flex-1 text-[13px] leading-tight">
+                <span className="block font-bold">Making your meme</span>
+                <span className="block truncate text-muted">{currentStageTitle(adapt.view)}</span>
+              </span>
               <span className="tabular font-mono text-[15px] font-semibold">
-                <Elapsed since={startedAt} />
+                <Elapsed since={adapt.startedAt} />
               </span>
             </>
           ) : (
