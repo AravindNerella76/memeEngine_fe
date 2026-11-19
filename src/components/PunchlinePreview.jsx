@@ -41,7 +41,8 @@ export const DEFAULT_PUNCH_STYLE = {
   fill: '#FFFFFF',
   highlight: '#FFE500',
   stroke: '#000000',
-  strokeWidth: 8
+  strokeWidth: 4,
+  shadowBlur: 13
 };
 
 /**
@@ -106,12 +107,18 @@ export default function PunchlinePreview({ image, text, style: given, englishFon
             lineHeight: style.lineHeight,
             WebkitTextStroke: style.stroke ? `${cq(style.strokeWidth * 2)} ${style.stroke}` : undefined,
             paintOrder: 'stroke fill',
-            textShadow: `${cq(3)} ${cq(4)} ${cq(6)} rgb(0 0 0 / .55)`
+            textShadow: `0 0 ${cq(style.shadowBlur || 13)} rgb(0 0 0 / 1)`
           }}
           aria-hidden="true"
         >
           {lines.map((l, i) => (
-            <div key={i} style={{ color: i === 0 ? style.highlight : style.fill }}>
+            <div
+              key={i}
+              style={{
+                color: i === 0 ? style.highlight : style.fill,
+                fontSize: lines.length === 2 && i === 0 ? '0.74em' : '1em'
+              }}
+            >
               {l}
             </div>
           ))}
