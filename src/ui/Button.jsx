@@ -8,23 +8,25 @@ const BASE =
   'disabled:opacity-45 disabled:cursor-not-allowed aria-disabled:opacity-45 aria-disabled:pointer-events-none';
 
 // The yellow "sticker" button presses down into its own shadow.
+// `can:` (tailwind.config.js) = not disabled. Unlike `enabled:` it also matches a Button rendered as a link (as="a" / Link),
+// so links get the same hover and press feedback as buttons.
 const STICKER =
-  'border-2 border-ink shadow-hard enabled:hover:-translate-x-0.5 enabled:hover:-translate-y-0.5 ' +
-  'enabled:hover:shadow-[5px_5px_0_0_rgb(var(--ink))] enabled:active:translate-x-[3px] enabled:active:translate-y-[3px] ' +
-  'enabled:active:shadow-none disabled:shadow-none';
+  'border-2 border-ink shadow-hard can:hover:-translate-x-0.5 can:hover:-translate-y-0.5 ' +
+  'can:hover:shadow-[5px_5px_0_0_rgb(var(--ink))] can:active:translate-x-[3px] can:active:translate-y-[3px] ' +
+  'can:active:shadow-none disabled:shadow-none';
 
 const VARIANTS = {
   primary: `bg-marker text-ink ${STICKER}`,
-  dark: 'bg-ink text-paper border-2 border-ink enabled:hover:bg-ink-3 enabled:active:translate-y-px',
+  dark: 'bg-ink text-paper border-2 border-ink can:hover:bg-ink-3 can:active:translate-y-px',
   secondary:
-    'bg-surface text-ink border border-line-strong shadow-sm enabled:hover:border-ink enabled:hover:bg-paper enabled:active:translate-y-px',
-  ghost: 'text-ink border border-transparent enabled:hover:bg-ink/[0.07] enabled:active:bg-ink/[0.12]',
-  danger: 'bg-bad text-white border border-bad enabled:hover:brightness-95 enabled:active:translate-y-px',
-  'danger-soft': 'bg-bad-soft text-bad border border-bad/25 enabled:hover:bg-bad enabled:hover:text-white',
-  'on-ink': 'bg-white/10 text-white border border-white/15 enabled:hover:bg-white/20',
+    'bg-surface text-ink border border-line-strong shadow-sm can:hover:border-ink can:hover:bg-paper can:active:translate-y-px',
+  ghost: 'text-ink border border-transparent can:hover:bg-ink/[0.07] can:active:bg-ink/[0.12]',
+  danger: 'bg-bad text-white border border-bad can:hover:brightness-95 can:active:translate-y-px',
+  'danger-soft': 'bg-bad-soft text-bad border border-bad/25 can:hover:bg-bad can:hover:text-white',
+  'on-ink': 'bg-white/10 text-white border border-white/15 can:hover:bg-white/20',
   'marker-on-ink':
-    'bg-marker text-ink border-2 border-marker enabled:hover:bg-white enabled:hover:border-white enabled:active:translate-y-px',
-  link: 'text-ink underline decoration-marker decoration-[3px] underline-offset-[3px] enabled:hover:decoration-ink p-0 h-auto rounded-sm'
+    'bg-marker text-ink border-2 border-marker can:hover:bg-white can:hover:border-white can:active:translate-y-px',
+  link: 'text-ink underline decoration-marker decoration-[3px] underline-offset-[3px] can:hover:decoration-ink p-0 h-auto rounded-sm'
 };
 
 const SIZES = {

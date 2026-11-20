@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Check, Copy, RefreshCw, ShieldCheck, WifiOff } from 'lucide-react';
 import { useAuth } from './AuthProvider';
-import SignInForm from './SignInForm';
+import SignInPanel from './SignInPanel';
 import { BRAND } from '../brand';
 import { API_BASE } from '../api';
 import { Alert, Button, LogoMark, useDocumentTitle, useOnline } from '../ui';
@@ -48,7 +48,7 @@ function CopyCommand({ command }) {
 /** The page you see when signed out: a private studio, a form, and nothing else to click. */
 export default function LoginScreen() {
   useDocumentTitle('Sign in');
-  const { status, refresh } = useAuth();
+  const { status, refresh, whatsappLogin } = useAuth();
   const online = useOnline();
   const [checking, setChecking] = useState(false);
   const busy = useRef(false);
@@ -115,7 +115,7 @@ export default function LoginScreen() {
           </p>
           <h1 className="text-[36px] font-extrabold leading-[1.05] tracking-[-0.03em]">{status === 'setup' ? 'One-time setup' : noInternet ? "You're offline" : status === 'offline' ? 'Server not reachable' : 'Welcome back'}</h1>
           <p className="mb-8 mt-3 text-[15px] leading-relaxed text-muted">
-            {status === 'setup' ? 'Create the owner account once, then sign in here.' : noInternet ? 'This device has no internet connection right now.' : status === 'offline' ? 'The studio is open, but its server did not answer.' : `Sign in to manage ${BRAND.handle}.`}
+            {status === 'setup' ? 'Create the owner account once, then sign in here.' : noInternet ? 'This device has no internet connection right now.' : status === 'offline' ? 'The studio is open, but its server did not answer.' : whatsappLogin ? `Send a code from your WhatsApp, or use your password, to manage ${BRAND.handle}.` : `Sign in to manage ${BRAND.handle}.`}
           </p>
 
           {status === 'offline' && (
@@ -127,7 +127,7 @@ export default function LoginScreen() {
               ) : (
                 <Alert tone="bad" icon={WifiOff} title="Can't reach the server">
                   If the studio is hosted, the server may be waking up (it can take up to a minute after a quiet spell), so this page keeps trying. If it runs on your own computer, start it with{' '}
-                  <code className="font-mono text-[12px]">npm start</code> in <code className="font-mono text-[12px]">memeEngine_be</code>
+                  <code className="font-mono text-[12px]">npm start</code> in <code className="font-mono text-[12px]">be</code>
                   {API_BASE ? ` (looking at ${API_BASE})` : ''}.
                 </Alert>
               )}
@@ -143,7 +143,7 @@ export default function LoginScreen() {
           {status === 'setup' && (
             <div className="space-y-4">
               <Alert tone="info" title="No owner account yet">
-                There is no sign-up page on purpose: the owner is created on the computer that runs the server. In the <code className="font-mono text-[12px]">memeEngine_be</code> folder run:
+                There is no sign-up page on purpose: the owner is created on the computer that runs the server. In the <code className="font-mono text-[12px]">be</code> folder run:
               </Alert>
               <CopyCommand command="npm run auth:create-owner" />
               <p className="text-[13px] leading-relaxed text-muted">It asks for a username and a password (typed hidden). Then come back and press the button.</p>
@@ -153,11 +153,11 @@ export default function LoginScreen() {
             </div>
           )}
 
-          {status === 'anon' && <SignInForm />}
+          {status === 'anon' && <SignInPanel />}
 
           <p className="mt-8 flex items-start gap-2 text-[12.5px] leading-relaxed text-muted">
             <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
-            <span>This studio is private to the page owner. Too many wrong passwords pause sign-in for a while.</span>
+            <span>{whatsappLogin ? 'This studio is private to the page owner. Only the allowed WhatsApp numbers can approve a code, each code works once, and too many wrong passwords pause sign-in for a while.' : 'This studio is private to the page owner. Too many wrong passwords pause sign-in for a while.'}</span>
           </p>
         </div>
       </main>

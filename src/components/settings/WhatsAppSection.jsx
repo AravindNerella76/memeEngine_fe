@@ -52,7 +52,7 @@ const FIELDS = [
         mono: true,
         placeholder: 'e.g. 919876543210',
         inputMode: 'tel',
-        hint: 'Only these numbers can talk to the bot. Digits with the country code; spaces and + are ignored. Add one at a time (press Enter), or paste several separated by commas. Up to 10.'
+        hint: 'Only these numbers can talk to the bot, and they can also sign in to this studio by sending the code shown on the sign-in page. Digits with the country code; spaces and + are ignored. Add one at a time (press Enter), or paste several separated by commas. Up to 10.'
       }
     ]
   }
@@ -564,7 +564,7 @@ export default function WhatsAppSection() {
               <strong>Verify token</strong>: you choose it. Press Generate above, save it here, then paste the same value in <strong>WhatsApp &gt; Configuration</strong> together with the callback URL.
             </li>
             <li>
-              <strong>Allowed phone numbers</strong>: the WhatsApp numbers that may use the bot (yours, and anyone you want to give access), each with the country code. Each person has their own conversation. On a Meta <em>test</em> number, Meta only delivers to numbers in its recipient list (<strong>WhatsApp &gt; API Setup</strong>, up to 5), so add each one there too.
+              <strong>Allowed phone numbers</strong>: the WhatsApp numbers that may use the bot (yours, and anyone you want to give access), each with the country code. Each person has their own conversation. These numbers can also <strong>sign in to the studio</strong>: the sign-in page shows a code, they send it to the bot, and the page opens (the bot replies with the device and a <em>That wasn't me</em> button). On a Meta <em>test</em> number, Meta only delivers to numbers in its recipient list (<strong>WhatsApp &gt; API Setup</strong>, up to 5), so add each one there too.
             </li>
           </ol>
         </Disclosure>

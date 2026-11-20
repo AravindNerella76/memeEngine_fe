@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { Check, Circle, KeyRound, LogOut, Monitor, ShieldCheck, Smartphone } from 'lucide-react';
+import { Check, Circle, KeyRound, LogOut, MessageCircle, Monitor, ShieldCheck, Smartphone } from 'lucide-react';
 import { authRequest, useAuth } from '../../auth/AuthProvider';
 import PasswordInput from '../../auth/PasswordInput';
 import { Alert, Badge, Button, Card, CardHeader, Field, Skeleton, cn, useConfirm, useToast } from '../../ui';
@@ -97,6 +97,7 @@ function ChangePassword({ onChanged }) {
 }
 
 function Sessions({ reloadKey }) {
+  const { whatsappLogin } = useAuth();
   const confirm = useConfirm();
   const toast = useToast();
   const [rows, setRows] = useState(null);
@@ -145,7 +146,7 @@ function Sessions({ reloadKey }) {
       <CardHeader
         icon={ShieldCheck}
         title="Where you are signed in"
-        description="Sessions end by themselves after a week without use. Recognise them all? Good. If not, end them and change the password."
+        description={`Sessions end by themselves after a week without use. Recognise them all? Good. If not, end them and change the password.${whatsappLogin ? ' Away from here? Send "Sign out everywhere" to the WhatsApp bot and every sign-in ends at once.' : ''}`}
         actions={
           <Button variant="danger-soft" size="sm" onClick={endOthers} loading={ending} disabled={!others} leftIcon={<LogOut className="h-3.5 w-3.5" />}>
             Sign out others
@@ -173,6 +174,12 @@ function Sessions({ reloadKey }) {
                   <p className="flex flex-wrap items-center gap-2 text-[14px] font-semibold">
                     {d.label}
                     {s.current && <Badge tone="ink" size="sm">This device</Badge>}
+                    {s.method === 'whatsapp' && (
+                      <Badge tone="outline" size="sm" title={s.phoneTail ? `Signed in with a code sent from the WhatsApp number ending ${s.phoneTail}` : 'Signed in with a code sent from WhatsApp'}>
+                        <MessageCircle className="h-3 w-3" aria-hidden="true" />
+                        WhatsApp{s.phoneTail ? <span className="font-mono"> · {s.phoneTail}</span> : null}
+                      </Badge>
+                    )}
                   </p>
                   <p className="mt-0.5 text-[12.5px] text-muted">
                     Last active {when(s.lastSeenAt)} · signed in {when(s.signedInAt)}
@@ -195,7 +202,7 @@ export default function AccountSection() {
   if (!authEnabled) {
     return (
       <Alert tone="warn" title="Login is switched off on this server">
-        The server was started with <code className="font-mono text-[12px]">AUTH_ENABLED=false</code>, so there is no account to manage. Remove that line from <code className="font-mono text-[12px]">memeEngine_be/.env</code> and restart to turn sign-in back on.
+        The server was started with <code className="font-mono text-[12px]">AUTH_ENABLED=false</code>, so there is no account to manage. Remove that line from <code className="font-mono text-[12px]">be/.env</code> and restart to turn sign-in back on.
       </Alert>
     );
   }
@@ -228,7 +235,7 @@ export default function AccountSection() {
       )}
       <Sessions reloadKey={reloadKey} />
       <p className="px-1 text-[12.5px] leading-relaxed text-muted">
-        Forgot the password? On the server computer, in <code className="font-mono text-[12px]">memeEngine_be</code>, run <code className="font-mono text-[12px]">npm run auth:reset-password</code>. It also signs out every device.
+        Forgot the password? On the server computer, in <code className="font-mono text-[12px]">be</code>, run <code className="font-mono text-[12px]">npm run auth:reset-password</code>. It also signs out every device.
       </p>
     </div>
   );

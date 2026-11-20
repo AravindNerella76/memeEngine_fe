@@ -3,7 +3,7 @@ import react from '@vitejs/plugin-react';
 
 // The backend this dev server forwards to. Override to test against another backend, e.g.
 //   VITE_PROXY_TARGET=http://localhost:3999 npx vite --port 5199
-const target = process.env.VITE_PROXY_TARGET || 'http://localhost:3000';
+const target = process.env.VITE_PROXY_TARGET || 'http://127.0.0.1:3000';
 
 const proxy = {
   '/api': { target, changeOrigin: true },

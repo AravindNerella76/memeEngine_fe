@@ -77,5 +77,11 @@ export default {
       }
     }
   },
-  plugins: []
+  plugins: [
+    // "can:" = this control can be used right now: a button that is not disabled, or a link that is not aria-disabled.
+    // (":enabled" never matches a link, so Buttons rendered as links had no hover or press feedback.)
+    function ({ addVariant }) {
+      addVariant('can', '&:not(:disabled):not([aria-disabled="true"])');
+    }
+  ]
 };

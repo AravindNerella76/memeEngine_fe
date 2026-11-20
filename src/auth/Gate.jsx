@@ -2,7 +2,7 @@ import React from 'react';
 import App from '../App';
 import { useAuth } from './AuthProvider';
 import LoginScreen, { Splash } from './LoginScreen';
-import SignInForm from './SignInForm';
+import SignInPanel from './SignInPanel';
 import { AdaptationProvider } from '../adapt/AdaptationProvider';
 import { Dialog, StatusProvider } from '../ui';
 
@@ -18,7 +18,7 @@ function SessionEndedDialog() {
       title="Sign in again"
       description="Your session ended, so the studio locked. Everything on screen is still here; sign in to carry on."
     >
-      <SignInForm />
+      <SignInPanel compact />
     </Dialog>
   );
 }
