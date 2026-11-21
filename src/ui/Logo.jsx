@@ -23,7 +23,7 @@ export function LogoMark({ size = 'md', className }) {
     <span
       aria-hidden="true"
       className={cn(
-        'inline-grid shrink-0 place-items-center border-2 border-ink bg-marker text-ink shadow-[2.5px_2.5px_0_0_rgb(var(--ink))]',
+        'inline-grid shrink-0 place-items-center border-2 border-ink bg-marker text-ink shadow-[2.5px_2.5px_0_0_rgb(var(--shadow))]',
         SIZES[size],
         className
       )}

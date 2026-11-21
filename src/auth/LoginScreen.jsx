@@ -80,7 +80,7 @@ export default function LoginScreen() {
   return (
     <div className="grid min-h-screen lg:grid-cols-[1.05fr_1fr]">
       {/* ---- left: the brand, with the memes doing the talking ---- */}
-      <aside className="stage-dots on-ink relative hidden flex-col justify-between overflow-hidden px-12 py-12 text-paper lg:flex" aria-hidden="true">
+      <aside className="stage-dots on-ink relative hidden flex-col dark:border-r dark:border-white/10 justify-between overflow-hidden px-12 py-12 text-paper lg:flex" aria-hidden="true">
         <div className="flex items-center gap-3">
           <LogoMark size="md" />
           <span className="font-display text-[20px] font-extrabold tracking-[-0.02em] text-white">{BRAND.product}</span>

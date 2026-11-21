@@ -77,7 +77,7 @@ export default function CommandPalette({ open, onClose, ctx }) {
 
   let index = -1;
   return createPortal(
-    <div className="on-ink fixed inset-0 z-[90] flex items-start justify-center bg-ink/70 px-3 pt-[12dvh] backdrop-blur-[3px] animate-fade-in sm:px-6" onMouseDown={e => e.target === e.currentTarget && onClose()}>
+    <div className="fixed inset-0 z-[90] flex items-start justify-center bg-scrim/70 px-3 pt-[12dvh] backdrop-blur-[3px] animate-fade-in sm:px-6" onMouseDown={e => e.target === e.currentTarget && onClose()}>
       <div role="dialog" aria-modal="true" aria-label="Search and jump" data-palette className="flex max-h-[min(30rem,76dvh)] w-full max-w-xl flex-col overflow-hidden rounded-lg border-2 border-ink bg-surface text-ink shadow-hard-lg animate-pop">
         <div className="flex items-center gap-3 border-b border-line px-4">
           <Search className="h-[18px] w-[18px] shrink-0 text-muted" aria-hidden="true" />

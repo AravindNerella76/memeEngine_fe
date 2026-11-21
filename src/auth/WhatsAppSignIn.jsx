@@ -72,7 +72,7 @@ function CodeTiles({ code, compact, dim }) {
 function Step({ n, children }) {
   return (
     <li className="flex items-start gap-2.5">
-      <span className="mt-px grid h-5 w-5 shrink-0 place-items-center rounded-full bg-ink font-mono text-[11px] font-bold text-marker" aria-hidden="true">
+      <span className="on-ink mt-px grid h-5 w-5 shrink-0 place-items-center rounded-full bg-ink font-mono text-[11px] font-bold text-marker dark:ring-1 dark:ring-white/25" aria-hidden="true">
         {n}
       </span>
       <span className="min-w-0">{children}</span>

@@ -1,12 +1,14 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Check, Gauge, Globe, Image, Instagram, KeyRound, LayoutTemplate, MessageCircle, Palette, RotateCcw, Save, Type, Undo2, WifiOff } from 'lucide-react';
+import { Bell, Check, Gauge, Globe, Image, Instagram, KeyRound, LayoutTemplate, MessageCircle, MoonStar, Palette, RotateCcw, Save, Type, Undo2, WifiOff } from 'lucide-react';
 import { diff, ROLE_SAMPLE, SECTION_INFO, serverErrorsByPath, settingsApi, setAt, validate } from './settingsModel';
 import SettingsPreview from './SettingsPreview';
 import { AdvancedSection, CanvasSection, DiscoverySection, EffectsSection, ImageSection, TypographySection } from './sections';
 import InstagramSection from './InstagramSection';
 import WhatsAppSection from './WhatsAppSection';
 import AccountSection from './AccountSection';
+import NotificationsSection from './NotificationsSection';
+import AppearanceSection from './AppearanceSection';
 import { Alert, Badge, Button, EmptyState, PageHeader, Skeleton, cn, useAvailability, useConfirm, useDocumentTitle, useToast } from '../../ui';
 
 /**
@@ -15,6 +17,9 @@ import { Alert, Badge, Button, EmptyState, PageHeader, Skeleton, cn, useAvailabi
  *   2. its form is a component taking the section props,
  *   3. one line here. `preview: true` shows the live sample meme beside it.
  */
+/** Sections that save themselves (no shared Save bar, no "Defaults for this section"). */
+const SELF_MANAGED = new Set(['instagram', 'whatsapp', 'notifications', 'appearance', 'account']);
+
 const SECTIONS = [
   { id: 'typography', icon: Type, preview: true, Body: TypographySection },
   { id: 'effects', icon: Palette, preview: true, Body: EffectsSection },
@@ -24,6 +29,8 @@ const SECTIONS = [
   { id: 'instagram', icon: Instagram, preview: false, Body: InstagramSection },
   { id: 'whatsapp', icon: MessageCircle, preview: false, Body: WhatsAppSection },
   { id: 'advanced', icon: Gauge, preview: false, Body: AdvancedSection },
+  { id: 'notifications', icon: Bell, preview: false, Body: NotificationsSection },
+  { id: 'appearance', icon: MoonStar, preview: false, Body: AppearanceSection },
   { id: 'account', icon: KeyRound, preview: false, Body: AccountSection }
 ];
 
@@ -305,7 +312,7 @@ export default function SettingsPage() {
               <h2 className="text-[24px] font-extrabold leading-tight tracking-[-0.02em]">{info.title}</h2>
               <p className="mt-1 max-w-2xl text-[13.5px] leading-relaxed text-muted">{info.description}</p>
             </div>
-            {section !== 'instagram' && section !== 'whatsapp' && section !== 'account' && (
+            {!SELF_MANAGED.has(section) && (
               <Button variant="secondary" size="sm" onClick={() => resetSection(section)} leftIcon={<RotateCcw className="h-3.5 w-3.5" />} className="shrink-0">
                 Defaults for this section
               </Button>

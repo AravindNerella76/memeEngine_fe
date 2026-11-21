@@ -227,7 +227,7 @@ export default function StyleGuideView() {
 
           {showJson && (
             <div className="relative mt-3 animate-fade-in">
-              <pre className="thin-scrollbar max-h-64 overflow-auto rounded-md border-2 border-ink bg-ink p-4 font-mono text-[12px] leading-relaxed text-marker">{json}</pre>
+              <pre className="thin-scrollbar max-h-64 overflow-auto rounded-md border-2 border-ink on-ink bg-ink p-4 font-mono text-[12px] leading-relaxed text-marker">{json}</pre>
               <Button variant="on-ink" size="sm" onClick={copy} className="absolute right-2.5 top-2.5" leftIcon={copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}>
                 {copied ? 'Copied' : 'Copy'}
               </Button>

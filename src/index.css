@@ -7,7 +7,8 @@
    Palette comes from the memes themselves: ink black, #FFE500 marker yellow, white,
    on warm paper. One loud accent; everything else stays quiet.
    ===================================================================================== */
-:root {
+:root,
+[data-theme='light'] {
   --ink: 14 14 12;
   --ink-2: 31 30 26;
   --ink-3: 52 50 43;
@@ -32,7 +33,81 @@
   --info: 36 72 170;
   --info-soft: 226 234 252;
 
+  /* sticker shadows and modal backdrops have their own colours, so they stay right in Night studio */
+  --shadow: 14 14 12;
+  --scrim: 14 14 12;
+
   color-scheme: light;
+}
+
+/* =====================================================================================
+   Night studio. The same names with night values: warm near-black paper, cream ink,
+   the same marker yellow. Text keeps at least 4.5:1 contrast on every surface.
+   ===================================================================================== */
+[data-theme='dark'] {
+  --ink: 240 236 224;
+  --ink-2: 224 219 205;
+  --ink-3: 204 198 182;
+  --paper: 21 20 18;
+  --paper-2: 30 29 26;
+  --surface: 35 33 29;
+  --line: 56 54 48;
+  --line-strong: 86 83 74;
+  --muted: 170 164 150;
+  --faint: 128 123 111;
+
+  --marker-soft: 64 58 18;
+
+  --ok: 112 214 148;
+  --ok-soft: 22 50 33;
+  --bad: 255 132 120;
+  --bad-soft: 66 28 26;
+  --warn: 246 192 84;
+  --warn-soft: 58 44 14;
+  --info: 144 172 255;
+  --info-soft: 26 34 62;
+
+  --shadow: 0 0 0;
+  --scrim: 0 0 0;
+
+  color-scheme: dark;
+}
+
+/* Islands: places drawn dark-on-paper by design (the ink sidebar, the meme stage) and the yellow stickers keep
+   the day values inside them, so a yellow button keeps its black text and outline and the sidebar looks the same. */
+[data-theme='dark'] :is(.on-ink, .stage-dots, .bg-marker, .bg-white) {
+  --ink: 14 14 12;
+  --ink-2: 31 30 26;
+  --ink-3: 52 50 43;
+  --paper: 247 244 235;
+  --paper-2: 239 235 223;
+  --surface: 255 254 250;
+  --line: 226 220 204;
+  --line-strong: 196 189 170;
+  --muted: 100 96 84;
+  --faint: 142 137 122;
+  --marker-soft: 255 248 189;
+  --ok: 21 118 58;
+  --ok-soft: 222 245 229;
+  --bad: 189 36 36;
+  --bad-soft: 253 232 230;
+  --warn: 138 90 0;
+  --warn-soft: 255 241 204;
+  --info: 36 72 170;
+  --info-soft: 226 234 252;
+  color-scheme: light;
+}
+/* on yellow, text is always ink: also for controls that only set a background and inherit their text colour */
+[data-theme='dark'] .bg-marker { color: rgb(var(--ink)); }
+/* white text on the night's lighter red/green would be hard to read: use the night paper instead */
+[data-theme='dark'] :is(.bg-bad, .bg-ok).text-white { color: rgb(var(--paper)); }
+
+/* an automatic switch (evening came) fades instead of snapping */
+.theme-fade,
+.theme-fade *,
+.theme-fade *::before,
+.theme-fade *::after {
+  transition: background-color 0.7s ease, color 0.7s ease, border-color 0.7s ease, fill 0.7s ease, box-shadow 0.7s ease !important;
 }
 
 @layer base {
@@ -104,6 +179,9 @@
     background-repeat: no-repeat;
     background-position: right 0.8rem center;
   }
+  [data-theme='dark'] select.field {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23F0ECE0' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  }
 
   /* Telugu text must read like the final meme: roomy line height, correct face */
   .telugu-input {
@@ -140,7 +218,7 @@
     border-radius: 999px;
     background: rgb(var(--marker));
     border: 2px solid rgb(var(--ink));
-    box-shadow: 1px 1px 0 rgb(var(--ink));
+    box-shadow: 1px 1px 0 rgb(var(--shadow));
     transition: transform 0.12s;
   }
   .range::-moz-range-thumb {

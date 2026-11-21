@@ -1,5 +1,5 @@
 import { lazy } from 'react';
-import { LayoutGrid, LayoutTemplate, Palette, SlidersHorizontal, Smile, Sparkles, Wand2 } from 'lucide-react';
+import { Bell, HeartPulse, LayoutGrid, LayoutTemplate, Palette, SlidersHorizontal, Smile, Sparkles, Wand2 } from 'lucide-react';
 // The landing page ships with the app (see `eagerPage`); every other page is downloaded when first needed.
 import ViralAdaptationForm from '../components/ViralAdaptationForm';
 import { memeListPath } from '../lib/memeList';
@@ -149,6 +149,17 @@ export const PAGES = [
     keywords: 'typography fonts colours canvas images discovery instagram whatsapp account password security',
     component: lazyPage(() => import('../components/settings/SettingsPage')),
     prefetch: () => warm('/api/settings', { ttl: 5_000 })
+  },
+  {
+    id: 'health',
+    path: '/health',
+    label: 'Health',
+    short: 'Health',
+    icon: HeartPulse,
+    group: 'Setup',
+    mobile: false,
+    keywords: 'status check broken not working doctor diagnose whatsapp token instagram database webhook problems',
+    component: lazyPage(() => import('../components/health/HealthPage'))
   }
 ];
 

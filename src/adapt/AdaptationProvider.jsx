@@ -2,6 +2,7 @@ import React, { createContext, useCallback, useContext, useEffect, useMemo, useR
 import { useLocation, useNavigate } from 'react-router-dom';
 import { API_BASE, apiFetch } from '../api';
 import { useToast } from '../ui';
+import { enablePush, permission, pushSupport, thisDeviceId } from '../lib/push';
 
 /**
  * The meme being made, kept for the whole app (not for one page). The engine runs it in the background and reports
@@ -66,11 +67,15 @@ async function fetchJob(path, signal) {
   return { ok: true, body: await res.json() };
 }
 
-/** A browser notification, only when the tab is out of sight and the person has allowed them. */
-function notifyWhenAway(title, body, onClick) {
+/**
+ * A browser notification, only when the tab is out of sight and the person has allowed them. Skipped when this device
+ * gets push notifications: the server sends the same news (with the meme's picture), and two would be one too many.
+ */
+function notifyWhenAway(title, body, onClick, jobId) {
   try {
     if (document.visibilityState !== 'hidden' || !('Notification' in window) || Notification.permission !== 'granted') return;
-    const n = new Notification(title, { body, tag: 'meme-engine-job' });
+    if (thisDeviceId()) return;
+    const n = new Notification(title, { body, tag: `job-${jobId}`, icon: '/icons/icon-192.png', badge: '/icons/badge-96.png' });
     n.onclick = () => {
       window.focus();
       n.close();
@@ -187,14 +192,14 @@ export function AdaptationProvider({ children }) {
         open();
       } else {
         toast.push({ kind: 'success', title: 'Your meme is ready', text: 'It is saved in My Memes.', action: { label: 'Open it', onClick: open } });
-        notifyWhenAway('Your meme is ready', 'Open Meme Engine to see it.', open);
+        notifyWhenAway('Your meme is ready', 'Open Meme Engine to see it.', open, s.id);
       }
       setS(IDLE);
     } else if (s.phase === 'failed' && was === 'running') {
       // seen failing live (not merely found failed after a reload)
       const back = () => navigate('/');
       if (where.current !== '/') toast.push({ kind: 'error', title: 'The meme could not be made', text: s.error?.message, action: { label: 'See why', onClick: back } });
-      notifyWhenAway('The meme could not be made', s.error?.message || 'Open Meme Engine to see why.', back);
+      notifyWhenAway('The meme could not be made', s.error?.message || 'Open Meme Engine to see why.', back, s.id);
     } else if (s.phase === 'lost') {
       toast.error('The engine was restarted, so its progress was lost. If the meme finished, it is in My Memes.', { title: 'Lost track of your meme' });
       setS(IDLE);
@@ -223,8 +228,10 @@ export function AdaptationProvider({ children }) {
       store.write(JOB_KEY, view.id);
       setS(fromView(view));
       try {
-        // asked on the Generate click (a gesture), once: the browser remembers the answer
-        if ('Notification' in window && Notification.permission === 'default') Notification.requestPermission().catch(() => {});
+        // asked on the Generate click (a gesture), once: the browser remembers the answer. With push, the news reaches
+        // this device even if the tab is closed; this subscribes to "meme ready" only (sign-in alerts are chosen in Settings).
+        if (pushSupport().supported && !thisDeviceId() && permission() !== 'denied') enablePush(['meme']).catch(() => {});
+        else if ('Notification' in window && Notification.permission === 'default') Notification.requestPermission().catch(() => {});
       } catch {
         /* optional */
       }

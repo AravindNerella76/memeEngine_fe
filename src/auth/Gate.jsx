@@ -4,6 +4,8 @@ import { useAuth } from './AuthProvider';
 import LoginScreen, { Splash } from './LoginScreen';
 import SignInPanel from './SignInPanel';
 import { AdaptationProvider } from '../adapt/AdaptationProvider';
+import TabProgress from '../adapt/TabProgress';
+import PushBridge from '../adapt/PushBridge';
 import { Dialog, StatusProvider } from '../ui';
 
 /** A session that ended while the studio was open: it stays on screen behind this dialog, nothing is lost. */
@@ -32,6 +34,8 @@ export default function Gate() {
       <StatusProvider>
         <AdaptationProvider>
           <App />
+          <TabProgress />
+          <PushBridge />
           {expired && <SessionEndedDialog />}
         </AdaptationProvider>
       </StatusProvider>

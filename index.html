@@ -5,8 +5,24 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <title>Meme Engine · @kanyaraasi_memes</title>
     <meta name="description" content="Studio for @kanyaraasi_memes: adapt viral memes in Telugu, check every picture, publish to Instagram." />
-    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect x='9' y='9' width='50' height='50' rx='13' fill='%230E0E0C'/%3E%3Crect x='4' y='4' width='50' height='50' rx='13' fill='%23FFE500' stroke='%230E0E0C' stroke-width='4'/%3E%3Cpath d='M16 41V21l11 13 11-13v20' fill='none' stroke='%230E0E0C' stroke-width='6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E" />
+    <link rel="icon" type="image/svg+xml" href="/icons/favicon.svg" />
+    <link rel="alternate icon" type="image/png" sizes="32x32" href="/icons/favicon-32.png" />
+    <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
+    <link rel="manifest" href="/manifest.webmanifest" />
     <meta name="theme-color" content="#F7F4EB" />
+    <script>
+      // Night studio: choose light or dark before the first paint, so a dark evening never flashes white. The same rule
+      // lives in src/theme/ThemeProvider.jsx (keep them alike): "auto" = dark from 19:00 to 06:30 on this device's clock.
+      (function () {
+        try {
+          var mode = localStorage.getItem('meme_engine_theme') || 'auto';
+          var d = new Date(), h = d.getHours() + d.getMinutes() / 60;
+          var dark = mode === 'dark' || (mode === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches) || (mode === 'auto' && (h >= 19 || h < 6.5));
+          document.documentElement.dataset.theme = dark ? 'dark' : 'light';
+          if (dark) document.querySelector('meta[name="theme-color"]').setAttribute('content', '#151412');
+        } catch (e) {}
+      })();
+    </script>
     <!-- The two fonts every screen's first paint uses, fetched together with the code instead of after it: no flash of
          a different font, nothing shifts when they arrive. Everything else (mono, Telugu, meme fonts) loads when used. -->
     <link rel="preload" as="font" type="font/woff2" crossorigin href="/node_modules/@fontsource-variable/instrument-sans/files/instrument-sans-latin-wght-normal.woff2" />

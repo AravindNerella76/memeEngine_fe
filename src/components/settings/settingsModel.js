@@ -151,6 +151,8 @@ export const SECTION_INFO = {
   instagram: { title: 'Instagram Integration', short: 'Instagram', description: 'Connect @kanyaraasi_memes via Meta Unified Login to publish memes directly from the studio.' },
   whatsapp: { title: 'WhatsApp Bot', short: 'WhatsApp', description: 'Every setting the WhatsApp bot needs: access token, phone number ID, webhook verify token, app secret and the allowed phone. Change any of them here, for example a new token when the old one expires; no redeploy needed.' },
   advanced: { title: 'Advanced & Performance', short: 'Advanced', description: 'Timeouts, retries, limits and diagnostics of the generation pipeline.' },
+  notifications: { title: 'Notifications', short: 'Notifications', description: 'Get told on your phone or computer when a meme is ready or someone signs in, even with the studio closed.' },
+  appearance: { title: 'Appearance', short: 'Appearance', description: 'Night studio: a dark studio for the evening, by itself or whenever you like.' },
   account: { title: 'Account & Security', short: 'Account', description: 'Your sign-in: change the password and see which devices are signed in.' },
 };
 

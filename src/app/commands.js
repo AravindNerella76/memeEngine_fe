@@ -1,4 +1,4 @@
-import { FileText, Instagram, LogOut, MessageCircle, RefreshCw, Search, Settings2 } from 'lucide-react';
+import { FileText, HeartPulse, Instagram, LogOut, MessageCircle, Moon, RefreshCw, Search, Settings2, Sun } from 'lucide-react';
 import { BRAND } from '../brand';
 import { memeListPath } from '../lib/memeList';
 import { peek } from '../lib/queryCache';
@@ -13,9 +13,35 @@ import { PAGES, openMeme } from './routes';
  *   label     what is shown                hint     small grey text on the right
  *   icon      lucide icon                  keywords extra words that find it
  *   when      (ctx) => boolean, optional   hide it when it does not apply (e.g. only when signed in)
- *   run       (ctx) => void                ctx = { navigate, signOut, refreshStatus, user }
+ *   run       (ctx) => void                ctx = { navigate, signOut, refreshStatus, user, theme, toggleTheme }
  */
 export const ACTIONS = [
+  {
+    id: 'night-studio',
+    label: 'Switch on Night studio',
+    hint: 'dark',
+    icon: Moon,
+    keywords: 'night dark mode theme appearance evening black',
+    when: ctx => ctx.theme !== 'dark' && Boolean(ctx.toggleTheme),
+    run: ctx => ctx.toggleTheme()
+  },
+  {
+    id: 'day-studio',
+    label: 'Turn off Night studio',
+    hint: 'back to light',
+    icon: Sun,
+    keywords: 'night dark light mode theme appearance day white',
+    when: ctx => ctx.theme === 'dark' && Boolean(ctx.toggleTheme),
+    run: ctx => ctx.toggleTheme()
+  },
+  {
+    id: 'health-check',
+    label: 'Run a health check',
+    hint: 'is everything working?',
+    icon: HeartPulse,
+    keywords: 'status broken doctor diagnose problem not working',
+    run: ctx => ctx.navigate('/health')
+  },
   {
     id: 'sign-out',
     label: 'Sign out',

@@ -49,7 +49,7 @@ export default function LivePreview({ preview, reason, placeholderPunchline, cla
               </div>
             )}
             {busy && image && (
-              <span role="status" className="absolute bottom-2 right-2 inline-flex items-center gap-1.5 rounded-full bg-ink/85 px-2.5 py-1 text-[11.5px] font-semibold text-marker">
+              <span role="status" className="absolute bottom-2 right-2 inline-flex items-center gap-1.5 on-ink rounded-full bg-ink/85 px-2.5 py-1 text-[11.5px] font-semibold text-marker">
                 <Loader2 className="h-3 w-3 animate-spin" aria-hidden="true" /> Updating
               </span>
             )}

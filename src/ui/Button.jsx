@@ -12,7 +12,7 @@ const BASE =
 // so links get the same hover and press feedback as buttons.
 const STICKER =
   'border-2 border-ink shadow-hard can:hover:-translate-x-0.5 can:hover:-translate-y-0.5 ' +
-  'can:hover:shadow-[5px_5px_0_0_rgb(var(--ink))] can:active:translate-x-[3px] can:active:translate-y-[3px] ' +
+  'can:hover:shadow-[5px_5px_0_0_rgb(var(--shadow))] can:active:translate-x-[3px] can:active:translate-y-[3px] ' +
   'can:active:shadow-none disabled:shadow-none';
 
 const VARIANTS = {

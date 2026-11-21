@@ -78,7 +78,7 @@ export function Dialog({ open, onClose, title, description, size = 'md', tone = 
 
   return createPortal(
     <div
-      className="on-ink fixed inset-0 z-[80] overflow-y-auto bg-ink/70 backdrop-blur-[3px] animate-fade-in"
+      className="fixed inset-0 z-[80] overflow-y-auto bg-scrim/70 backdrop-blur-[3px] animate-fade-in"
       onMouseDown={e => e.target === e.currentTarget && onCloseRef.current?.()}
     >
       <div className="flex min-h-full items-end justify-center sm:items-center sm:p-6" onMouseDown={e => e.target === e.currentTarget && onCloseRef.current?.()}>

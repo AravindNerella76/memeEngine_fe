@@ -116,7 +116,7 @@ export default function SettingsPreview({ patch, blocked, sample, onSampleChange
           </div>
         )}
         {blocked && (
-          <div className="absolute inset-x-2 bottom-2 rounded bg-ink/90 px-3 py-2 text-[12px] font-medium text-coral">Fix the highlighted values to update the preview.</div>
+          <div className="absolute inset-x-2 bottom-2 rounded bg-scrim/90 px-3 py-2 text-[12px] font-medium text-coral">Fix the highlighted values to update the preview.</div>
         )}
       </div>
 

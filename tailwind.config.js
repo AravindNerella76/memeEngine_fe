@@ -4,6 +4,8 @@
 const token = name => `rgb(var(--${name}) / <alpha-value>)`;
 
 export default {
+  // Night studio: `dark:` utilities apply under data-theme="dark" (set by src/theme/ThemeProvider.jsx)
+  darkMode: ['selector', '[data-theme="dark"]'],
   content: ['./index.html', './src/**/*.{js,ts,jsx,tsx}'],
   theme: {
     extend: {
@@ -22,7 +24,9 @@ export default {
         info: { DEFAULT: token('info'), soft: token('info-soft') },
         // status colours that stay readable on the black sidebar / stage
         live: 'rgb(91 217 138 / <alpha-value>)',
-        coral: 'rgb(255 122 112 / <alpha-value>)'
+        coral: 'rgb(255 122 112 / <alpha-value>)',
+        // modal backdrops: dark in both themes
+        scrim: token('scrim')
       },
       fontFamily: {
         sans: ['"Instrument Sans Variable"', '"Instrument Sans"', '"Noto Sans Telugu Variable"', '"Noto Sans Telugu"', 'system-ui', 'sans-serif'],
@@ -43,9 +47,9 @@ export default {
       },
       boxShadow: {
         // "sticker" shadows echo the black outline + drop shadow on the memes themselves
-        hard: '3px 3px 0 0 rgb(var(--ink))',
-        'hard-sm': '2px 2px 0 0 rgb(var(--ink))',
-        'hard-lg': '6px 6px 0 0 rgb(var(--ink))',
+        hard: '3px 3px 0 0 rgb(var(--shadow))',
+        'hard-sm': '2px 2px 0 0 rgb(var(--shadow))',
+        'hard-lg': '6px 6px 0 0 rgb(var(--shadow))',
         'hard-marker': '6px 6px 0 0 rgb(var(--marker))',
         soft: '0 1px 0 rgb(var(--ink) / 0.04), 0 10px 28px -14px rgb(var(--ink) / 0.22)',
         lift: '0 1px 0 rgb(var(--ink) / 0.05), 0 18px 40px -16px rgb(var(--ink) / 0.32)',

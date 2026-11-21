@@ -34,7 +34,7 @@ export default function QrCode({ value, size = 136, label, className }) {
   return (
     <svg viewBox={`0 0 ${box} ${box}`} width={size} height={size} role="img" aria-label={label} className={className} shapeRendering="crispEdges">
       <rect width={box} height={box} fill="#fff" />
-      <path d={path} fill="rgb(var(--ink))" />
+      <path d={path} fill="#0E0E0C" />
     </svg>
   );
 }

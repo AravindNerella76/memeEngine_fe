@@ -3,6 +3,7 @@ import ReactDOM from 'react-dom/client';
 import { BrowserRouter } from 'react-router-dom';
 import Gate from './auth/Gate.jsx';
 import { AuthProvider } from './auth/AuthProvider.jsx';
+import { ThemeProvider } from './theme/ThemeProvider.jsx';
 import { BusyProvider, ConfirmProvider, OnlineProvider, ToastProvider } from './ui';
 import { pageForPath, preloadPage } from './app/routes';
 import './fonts';
@@ -15,6 +16,7 @@ ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
     <BrowserRouter>
       <ToastProvider>
+        <ThemeProvider>
         <OnlineProvider>
         <ConfirmProvider>
           <BusyProvider>
@@ -24,6 +26,7 @@ ReactDOM.createRoot(document.getElementById('root')).render(
           </BusyProvider>
         </ConfirmProvider>
         </OnlineProvider>
+        </ThemeProvider>
       </ToastProvider>
     </BrowserRouter>
   </React.StrictMode>

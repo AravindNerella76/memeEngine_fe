@@ -1,6 +1,7 @@
 import React, { Suspense, lazy, useEffect, useState } from 'react';
 import { Routes, Route, NavLink, Navigate, useLocation, useNavigate } from 'react-router-dom';
-import { ExternalLink, Instagram, KeyRound, LogOut, MessageCircle, RefreshCw, Search, WifiOff } from 'lucide-react';
+import { ArrowRight, ExternalLink, Instagram, KeyRound, LogOut, MessageCircle, Moon, RefreshCw, Search, Sun, WifiOff } from 'lucide-react';
+import { useTheme } from './theme/ThemeProvider';
 import { useAuth } from './auth/AuthProvider';
 import ErrorBoundary from './app/ErrorBoundary';
 import PageSkeleton from './app/PageSkeleton';
@@ -152,6 +153,10 @@ function EngineStatus() {
           </>
         )}
       </ul>
+      <NavLink to="/health" className="mt-3 flex items-center justify-between border-t border-white/10 pt-2.5 text-[12px] font-semibold text-paper/65 transition-colors hover:text-marker">
+        Full health check
+        <ArrowRight className="h-3.5 w-3.5" aria-hidden="true" />
+      </NavLink>
     </div>
   );
 }
@@ -186,6 +191,18 @@ function JobPill({ variant }) {
   );
 }
 
+/** The quick Night studio switch: shows what you will get (a moon in daylight, a sun at night). */
+function ThemeSwitch({ className }) {
+  const { theme, toggle, mode } = useTheme();
+  const dark = theme === 'dark';
+  const label = dark ? 'Switch to the light studio' : 'Switch on Night studio';
+  return (
+    <button type="button" onClick={toggle} aria-label={label} title={`${label}${mode === 'auto' ? ' (now automatic: dark from 7 pm)' : ''}`} className={className}>
+      {dark ? <Sun className="h-[18px] w-[18px]" /> : <Moon className="h-[18px] w-[18px]" />}
+    </button>
+  );
+}
+
 function Sidebar({ onOpenPalette }) {
   return (
     <aside className="on-ink fixed inset-y-0 left-0 z-50 hidden w-[252px] flex-col bg-ink text-paper md:flex">
@@ -197,19 +214,20 @@ function Sidebar({ onOpenPalette }) {
         </span>
       </NavLink>
 
-      <div className="px-3 pb-1">
+      <div className="flex gap-2 px-3 pb-1">
         <button
           type="button"
           onClick={onOpenPalette}
           onPointerEnter={loadPalette}
           onFocus={loadPalette}
           aria-label={`Search and jump (${MOD_KEY} K)`}
-          className="flex h-10 w-full items-center gap-2.5 rounded border border-white/10 bg-white/[0.05] px-3 text-left text-[13px] text-paper/65 transition-colors hover:bg-white/[0.1] hover:text-white"
+          className="flex h-10 min-w-0 flex-1 items-center gap-2.5 rounded border border-white/10 bg-white/[0.05] px-3 text-left text-[13px] text-paper/65 transition-colors hover:bg-white/[0.1] hover:text-white"
         >
           <Search className="h-4 w-4 shrink-0" aria-hidden="true" />
           <span className="flex-1">Jump to…</span>
           <kbd className="rounded border border-white/15 px-1.5 font-mono text-[11px] leading-5 text-paper/60">{MOD_KEY} K</kbd>
         </button>
+        <ThemeSwitch className="grid h-10 w-10 shrink-0 place-items-center rounded border border-white/10 bg-white/[0.05] text-paper/65 transition-colors hover:bg-white/[0.1] hover:text-marker" />
       </div>
 
       <nav aria-label="Main" className="thin-scrollbar flex-1 overflow-y-auto px-3 pb-4">
@@ -306,6 +324,7 @@ function MobileHeader({ onOpenPalette }) {
         <button type="button" onClick={onOpenPalette} aria-label="Search and jump" title="Search, open WhatsApp or Instagram, and more" className="grid h-10 w-10 shrink-0 place-items-center rounded text-ink-3 hover:bg-ink/[0.07]">
           <Search className="h-[18px] w-[18px]" />
         </button>
+        <ThemeSwitch className="grid h-10 w-10 shrink-0 place-items-center rounded text-ink-3 hover:bg-ink/[0.07]" />
         {authEnabled && username && (
           <button type="button" onClick={signOut} aria-label={`Sign out ${username}`} title="Sign out" className="grid h-10 w-10 shrink-0 place-items-center rounded text-ink-3 hover:bg-ink/[0.07]">
             <LogOut className="h-[18px] w-[18px]" />
@@ -431,6 +450,7 @@ export default function App() {
   const signOut = useSignOut();
   const { username, authEnabled } = useAuth();
   const { refresh: refreshStatus } = useSystemStatus();
+  const { theme, toggle: toggleTheme } = useTheme();
 
   // Ctrl/⌘+K from anywhere; "/" too when not typing in a field
   const [paletteOpen, setPaletteOpen] = useState(false);
@@ -508,7 +528,7 @@ export default function App() {
 
       {paletteWanted && (
         <Suspense fallback={null}>
-          <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} ctx={{ navigate, signOut, refreshStatus, user: { username, authEnabled } }} />
+          <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} ctx={{ navigate, signOut, refreshStatus, user: { username, authEnabled }, theme, toggleTheme }} />
         </Suspense>
       )}
     </div>
