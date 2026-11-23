@@ -225,10 +225,15 @@ export default function WhatsAppSignIn({ compact = false, onUsePassword }) {
             return;
           }
           if (data.status === 'used') {
-            // another tab of this browser collected it: that tab's cookie works here too
             tokenRef.current = null;
-            await refresh();
-            if (mountedRef.current && !stopped) start();
+            // signed in after all (another tab of this browser collected it)? Then the studio simply opens.
+            const me = await authRequest('GET', '/api/auth/me').catch(() => null);
+            if (me?.data?.authenticated) return void refresh();
+            // never quietly swap the code: the person just sent this one and WhatsApp told them it worked
+            if (mountedRef.current && !stopped) {
+              setError({ code: 'used', message: 'WhatsApp approved this code, but the sign-in did not reach this page in time. Nothing is wrong with your number: get a new code and send it again.' });
+              setPhase('error');
+            }
             return;
           }
           setPhase('expired'); // keep the token: renewing it does not count as a new code
@@ -306,7 +311,7 @@ export default function WhatsAppSignIn({ compact = false, onUsePassword }) {
     const unavailable = error?.code === 'whatsapp_unavailable';
     return (
       <div className="space-y-4">
-        <Alert tone={unavailable ? 'info' : error?.code === 'too_many_codes' ? 'warn' : 'bad'} icon={error?.code === 'network' ? WifiOff : undefined} title={unavailable ? 'WhatsApp sign-in is not ready' : error?.code === 'session_not_kept' ? 'Signed in, but not kept' : error?.code === 'too_many_codes' ? 'Too many codes' : 'Could not get a code'}>
+        <Alert tone={unavailable ? 'info' : error?.code === 'too_many_codes' ? 'warn' : 'bad'} icon={error?.code === 'network' ? WifiOff : undefined} title={unavailable ? 'WhatsApp sign-in is not ready' : error?.code === 'session_not_kept' ? 'Signed in, but not kept' : error?.code === 'too_many_codes' ? 'Too many codes' : error?.code === 'used' ? 'That code reached WhatsApp, not this page' : 'Could not get a code'}>
           {error?.message}
         </Alert>
         <div className="flex gap-2.5">
@@ -316,8 +321,8 @@ export default function WhatsAppSignIn({ compact = false, onUsePassword }) {
             </Button>
           )}
           {error?.code !== 'session_not_kept' && (
-            <Button variant="secondary" className={onUsePassword ? '' : 'w-full'} onClick={() => start({ byHand: true })} leftIcon={<RefreshCw className="h-4 w-4" />}>
-              Try again
+            <Button variant={error?.code === 'used' ? 'primary' : 'secondary'} className={onUsePassword ? '' : 'w-full'} onClick={() => start({ byHand: true })} leftIcon={<RefreshCw className="h-4 w-4" />}>
+              {error?.code === 'used' ? 'New code' : 'Try again'}
             </Button>
           )}
         </div>
