@@ -233,6 +233,32 @@ export function CanvasSection(props) {
           <NumberField label="Minimum image size" description="Smallest image area the automatic layout may create; smaller grids are evened out." {...bind(['canvas', 'minSlotSize'])} />
         </div>
       </Group>
+      {draft.canvas.watermark && (
+        <Group title="Your logo on every meme" description="The C/O Kanyaraasi logo, stamped on each meme when it is finished (on the studio and on WhatsApp). Memes made earlier keep the look they were made with.">
+          <Toggle
+            label="Logo on"
+            checked={draft.canvas.watermark.enabled}
+            defaultValue={bind(['canvas', 'watermark', 'enabled']).defaultValue}
+            onChange={v => set(['canvas', 'watermark', 'enabled'], v)}
+          />
+          <Segmented
+            label="Where"
+            {...bind(['canvas', 'watermark', 'position'])}
+            options={[
+              { value: 'auto', label: 'Automatic', hint: 'Centre, above the text' },
+              { value: 'top-left', label: 'Top left' },
+              { value: 'top-right', label: 'Top right' },
+              { value: 'bottom-left', label: 'Bottom left' },
+              { value: 'bottom-right', label: 'Bottom right' }
+            ]}
+            columns="grid-cols-2 sm:grid-cols-3"
+          />
+          <div className="grid-fit gap-5">
+            <NumberField label="Size" description="Width of the logo compared with the meme." {...bind(['canvas', 'watermark', 'size'])} format={pct} />
+            <NumberField label="Opacity" {...bind(['canvas', 'watermark', 'opacity'])} format={pct} />
+          </div>
+        </Group>
+      )}
       <Note icon={Lock}>The arrangement of images (columns, grids, stacked rows) is always taken from the reference automatically. There is no manual positioning.</Note>
     </div>
   );
