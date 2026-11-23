@@ -1,9 +1,11 @@
 import React, { Suspense, lazy, startTransition, useCallback, useEffect, useRef, useState } from 'react';
 import { Download, GitBranch, ImageOff, Info, Instagram, LayoutGrid, Plus, RefreshCw, Search, Trash2, WifiOff, X } from 'lucide-react';
-import { Link, useSearchParams } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { API_BASE, apiFetch } from '../api';
 import { HttpError, cachedJSON, invalidate, warm } from '../lib/queryCache';
 import { memeListPath } from '../lib/memeList';
+import { focusedGridItem, moveInGrid } from '../lib/gridNav';
+import { focusField, feedback, useShortcuts } from '../app/shortcuts';
 import { Badge, Button, Chips, EmptyState, PageHeader, Select, Skeleton, cn, friendlyDate, useConfirm, useDocumentTitle, useToast } from '../ui';
 
 // only needed when someone opens a meme's details: not part of the gallery's own download
@@ -245,6 +247,35 @@ export default function MyMemesGallery({ onSelectMeme }) {
   const offline = error && /fetch|network|load failed/i.test(error);
   const showSkeleton = !list.loaded && !error;
 
+  // Keyboard: walk the wall with the arrows (or J/K), act on the card in focus with its own buttons
+  const navigate = useNavigate();
+  const gridRef = useRef(null);
+  const searchRef = useRef(null);
+  const hasCards = list.items.length > 0;
+  // the arrows keep scrolling the page until a card has focus (J/K or Tab get you onto the wall)
+  const move = dir => e => (/^Arrow/.test(e.key) && !focusedGridItem(gridRef.current) ? false : void moveInGrid(gridRef.current, dir, { instant: e.repeat }));
+  // a key that acts on the focused card clicks that card's own button, so it behaves (and confirms) exactly like a click
+  const onCard = action => () => {
+    const card = focusedGridItem(gridRef.current);
+    const button = card?.querySelector(`[data-card-action="${action}"]`);
+    if (!button) return false;
+    feedback(button, 'press');
+    button.click();
+  };
+  useShortcuts([
+    { keys: '/', label: 'Search your memes', run: () => void focusField(searchRef.current) },
+    { keys: ['j', 'right'], label: 'Next meme', repeat: true, when: hasCards, run: move('next') },
+    { keys: ['k', 'left'], label: 'Previous meme', repeat: true, when: hasCards, run: move('prev') },
+    { keys: 'down', label: 'Meme below', repeat: true, when: hasCards, run: move('down') },
+    { keys: 'up', label: 'Meme above', repeat: true, when: hasCards, run: move('up') },
+    { keys: 'enter', label: 'Open the meme in focus', when: hasCards, run: () => false }, // the card's own button does it
+    { keys: 'd', label: 'Download the meme in focus', when: hasCards, run: onCard('download') },
+    { keys: 'i', label: 'Generation details of the meme in focus', when: hasCards, run: onCard('details') },
+    { keys: ['x', 'del'], label: 'Delete the meme in focus', when: hasCards, run: onCard('delete') },
+    { keys: 'r', label: 'Refresh', when: !refreshing, run: () => void load() },
+    { keys: 'n', label: 'New meme', run: () => navigate('/') }
+  ]);
+
   return (
     <div>
       <PageHeader
@@ -262,10 +293,10 @@ export default function MyMemesGallery({ onSelectMeme }) {
         description="Everything you have made, with every version. Open a meme to review it, change it, or publish it to Instagram."
         actions={
           <>
-            <Button variant="secondary" onClick={() => load()} disabled={refreshing} leftIcon={<RefreshCw className={cn('h-4 w-4', refreshing && 'animate-spin')} />}>
+            <Button variant="secondary" onClick={() => load()} disabled={refreshing} leftIcon={<RefreshCw className={cn('h-4 w-4', refreshing && 'animate-spin')} />} aria-keyshortcuts="R" title="Refresh (R)">
               Refresh
             </Button>
-            <Button as={Link} to="/" variant="primary" leftIcon={<Plus className="h-4 w-4" strokeWidth={2.6} />}>
+            <Button as={Link} to="/" variant="primary" leftIcon={<Plus className="h-4 w-4" strokeWidth={2.6} />} aria-keyshortcuts="N" title="New meme (N)">
               New meme
             </Button>
           </>
@@ -278,7 +309,9 @@ export default function MyMemesGallery({ onSelectMeme }) {
           <div className="relative flex-1">
             <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" aria-hidden="true" />
             <input
+              ref={searchRef}
               type="search"
+              aria-keyshortcuts="/"
               value={search}
               onChange={e => setSearch(e.target.value)}
               placeholder="Search topic, headline or Telugu punchline"
@@ -352,7 +385,7 @@ export default function MyMemesGallery({ onSelectMeme }) {
               </button>
             </p>
           )}
-          <div className={cn('grid gap-5 transition-opacity duration-200 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4', refreshing && !loadingMore && 'opacity-80')}>
+          <div ref={gridRef} className={cn('grid gap-5 transition-opacity duration-200 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4', refreshing && !loadingMore && 'opacity-80')}>
             {list.items.map((m, idx) => {
               const memeId = idOf(m);
               const versionCount = m.versionCount || m.versions?.length || 1;
@@ -363,17 +396,18 @@ export default function MyMemesGallery({ onSelectMeme }) {
               return (
                 <article
                   key={memeId}
+                  data-grid-item
                   style={idx < 24 ? { '--i': Math.min(idx, 10) } : undefined}
                   className={cn(
                     // content-visibility: cards far off screen cost nothing to lay out or paint, however long the library grows
-                    'group relative flex flex-col overflow-hidden rounded-lg border border-line bg-surface shadow-soft transition-all duration-200 [contain-intrinsic-size:auto_440px] [content-visibility:auto] hover:-translate-y-1 hover:border-ink hover:shadow-hard',
+                    'group relative flex flex-col overflow-hidden rounded-lg border border-line bg-surface shadow-soft transition-all duration-200 [contain-intrinsic-size:auto_440px] [content-visibility:auto] hover:-translate-y-1 hover:border-ink hover:shadow-hard has-[:focus-visible]:-translate-y-1 has-[:focus-visible]:border-ink has-[:focus-visible]:shadow-hard',
                     idx < 24 && 'animate-fade-up',
                     deletingId === memeId && 'pointer-events-none opacity-50'
                   )}
                   onPointerEnter={prefetch}
                 >
                   <div className="relative aspect-[4/5] overflow-hidden bg-ink">
-                    <button type="button" onClick={open} onFocus={prefetch} aria-label={`Open ${title}`} className="block h-full w-full">
+                    <button type="button" onClick={open} onFocus={prefetch} aria-label={`Open ${title}`} className="block h-full w-full" data-grid-focus>
                       <Thumb
                         src={list.thumbs ? thumbUrl(m, 480) : fullUrl(m)}
                         srcSet={list.thumbs ? `${thumbUrl(m, 360)} 360w, ${thumbUrl(m, 480)} 480w, ${thumbUrl(m, 720)} 720w` : undefined}
@@ -407,17 +441,18 @@ export default function MyMemesGallery({ onSelectMeme }) {
                         className="pointer-events-auto"
                         href={`${API_BASE}/api/memes/${memeId}/download/png`}
                         download={`meme_${memeId.substring(0, 8)}.png`}
-                        title="Download PNG"
+                        title="Download PNG (D)"
                         aria-label="Download PNG"
+                        data-card-action="download"
                       >
                         <Download className="h-4 w-4" />
                       </Button>
                       {m.pipeline === 'viral_adaptation_v2' && (
-                        <Button variant="secondary" size="icon-sm" className="pointer-events-auto" onClick={() => setDetailsId(memeId)} title="Generation details: why these images were chosen" aria-label="Generation details">
+                        <Button variant="secondary" size="icon-sm" className="pointer-events-auto" onClick={() => setDetailsId(memeId)} title="Generation details: why these images were chosen (I)" aria-label="Generation details" data-card-action="details">
                           <Info className="h-4 w-4" />
                         </Button>
                       )}
-                      <Button variant="danger" size="icon-sm" className="pointer-events-auto" onClick={() => handleDelete(m, idx)} disabled={deletingId === memeId} title="Delete meme" aria-label="Delete meme">
+                      <Button variant="danger" size="icon-sm" className="pointer-events-auto" onClick={() => handleDelete(m, idx)} disabled={deletingId === memeId} title="Delete meme (X)" aria-label="Delete meme" data-card-action="delete">
                         <Trash2 className="h-4 w-4" />
                       </Button>
                     </div>

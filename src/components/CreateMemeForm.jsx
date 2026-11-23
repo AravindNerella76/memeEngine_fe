@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { ACCEPT_PICTURES, isHeicFile, toBrowserImages } from '../lib/heic';
 import { Link } from 'react-router-dom';
 import { markReactionUsed } from '../lib/reactionLibrary';
 import ReactionPicker from './reactions/ReactionPicker';
@@ -10,6 +11,7 @@ import { API_BASE, apiFetch } from '../api';
 import { cachedJSON } from '../lib/queryCache';
 import { ColorField, NumberField, Segmented, SelectField } from './settings/controls';
 import LivePreview from './create/LivePreview';
+import { KeyCaps, press, useShortcuts } from '../app/shortcuts';
 import { useManualPreview } from './create/useManualPreview';
 import { clearDraft, loadDraft, saveDraft } from './create/draft';
 import { Alert, Badge, Button, Card, Dialog, Field, ImageDrop, Input, PageHeader, Textarea, cn, isImageFile, makeImageItem, useDocumentTitle, useImageSlot, useAvailability, useToast } from '../ui';
@@ -259,10 +261,16 @@ export default function CreateMemeForm({ onGenerated }) {
   };
 
   // Multiple subject images (picked or dropped)
-  const addSubjects = fileList => {
+  const addSubjects = async fileList => {
     const files = Array.from(fileList || []);
-    const images = files.filter(isImageFile);
-    if (files.length && images.length < files.length) toast.error('Some files were skipped because they are not images.');
+    const pictures = files.filter(isImageFile);
+    if (files.length && pictures.length < files.length) toast.error('Some files were skipped because they are not images.');
+    if (!pictures.length) return;
+    // iPhone photos (HEIC) become JPEGs first: browsers other than Safari cannot show them
+    const heic = pictures.filter(isHeicFile).length;
+    if (heic) toast.info(`Converting ${heic === 1 ? 'an iPhone photo' : `${heic} iPhone photos`}…`);
+    const { files: images, failed } = await toBrowserImages(pictures);
+    if (failed.length) toast.error(failed.length === 1 ? `"${failed[0].name}": ${failed[0].reason}` : `${failed.length} iPhone photos could not be converted: ${failed[0].reason}`);
     if (!images.length) return;
 
     const newItems = images.map((file, idx) => ({
@@ -449,6 +457,12 @@ export default function CreateMemeForm({ onGenerated }) {
     if (error && errorRef.current) errorRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
   }, [error]);
 
+  useShortcuts([
+    { keys: 'mod+enter', label: 'Generate meme', inFields: true, when: !loading, run: () => void press('create-generate') },
+    // only where the preview is not already beside the form
+    { keys: 'p', label: 'Show the preview', hidden: true, run: () => press('create-preview') }
+  ]);
+
   const textDone = Boolean((topic || headline || statement) && punchline);
 
   return (
@@ -602,7 +616,7 @@ export default function CreateMemeForm({ onGenerated }) {
             <input
               type="file"
               multiple
-              accept="image/*"
+              accept={ACCEPT_PICTURES}
               className="sr-only"
               onChange={e => {
                 addSubjects(e.target.files);
@@ -846,11 +860,12 @@ export default function CreateMemeForm({ onGenerated }) {
           )}
         </p>
         <div className={cn('flex min-w-0 items-center gap-2', net.ok ? 'w-full sm:w-auto' : 'shrink-0')}>
-          <Button variant="secondary" size="lg" className="shrink-0 lg:hidden" onClick={() => setPreviewOpen(true)} leftIcon={<Eye className="h-[18px] w-[18px]" />} aria-label="Show the preview">
+          <Button variant="secondary" size="lg" className="shrink-0 lg:hidden" onClick={() => setPreviewOpen(true)} leftIcon={<Eye className="h-[18px] w-[18px]" />} aria-label="Show the preview" data-key-action="create-preview">
             Preview
           </Button>
-          <Button variant="primary" size="lg" className="min-w-0 flex-1 sm:flex-none" loading={loading} disabled={!net.ok} onClick={handleGenerate} leftIcon={<Wand2 className="h-[18px] w-[18px]" />}>
+          <Button variant="primary" size="lg" className="min-w-0 flex-1 sm:flex-none" loading={loading} disabled={!net.ok} onClick={handleGenerate} leftIcon={<Wand2 className="h-[18px] w-[18px]" />} data-key-action="create-generate" aria-keyshortcuts="Control+Enter Meta+Enter">
             {loading ? 'Making the meme…' : 'Generate meme'}
+            {!loading && <KeyCaps keys="mod+enter" tone="marker" className="ml-1 hidden opacity-80 sm:inline-flex" />}
           </Button>
         </div>
       </div>

@@ -2,7 +2,10 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { RefreshCw, Trash2, Upload } from 'lucide-react';
 import Button from './Button';
 import { Kbd } from './Badge';
+import { MOD_KEY } from '../app/platform';
 import { cn } from './cn';
+import Spinner from './Spinner';
+import { ACCEPT_PICTURES, isHeicFile, isPictureFile, toBrowserImage } from '../lib/heic';
 
 export function formatBytes(n) {
   if (typeof n !== 'number' || Number.isNaN(n)) return '';
@@ -10,7 +13,8 @@ export function formatBytes(n) {
   return `${Math.max(1, Math.round(n / 1024))} KB`;
 }
 
-export const isImageFile = file => Boolean(file) && /^image\//.test(file.type || '');
+/** Any picture the studio takes, iPhone photos (HEIC) included: they are converted when picked (see lib/heic.js). */
+export const isImageFile = isPictureFile;
 export const makeImageItem = file => ({ file, preview: URL.createObjectURL(file), name: file.name });
 
 /** State for one picked image. Frees the browser's preview URL when the image is replaced or the page closes. */
@@ -39,6 +43,7 @@ export function useImageSlot() {
 export default function ImageDrop({ value, onChange, onReject, title, hint, icon: Icon = Upload, thumbClass = 'h-28 w-24', showPasteHint, disabled, note, className }) {
   const [over, setOver] = useState(false);
   const [dims, setDims] = useState(null);
+  const [converting, setConverting] = useState(null); // the iPhone photo being turned into a JPEG
   const depth = useRef(0);
 
   useEffect(() => {
@@ -55,14 +60,25 @@ export default function ImageDrop({ value, onChange, onReject, title, hint, icon
     };
   }, [value?.preview]);
 
-  const take = files => {
+  const take = async files => {
     const file = files && files[0];
-    if (!file) return;
-    if (!isImageFile(file)) {
-      onReject?.('That file is not an image. Use a JPG, PNG or WEBP.');
+    if (!file || converting) return;
+    if (!isPictureFile(file)) {
+      onReject?.('That file is not an image. Use a JPG, PNG, WEBP or iPhone (HEIC) photo.');
       return;
     }
-    onChange(makeImageItem(file));
+    if (!isHeicFile(file)) {
+      onChange(makeImageItem(file));
+      return;
+    }
+    setConverting(file.name || 'photo.heic');
+    try {
+      onChange(makeImageItem(await toBrowserImage(file)));
+    } catch (e) {
+      onReject?.(e.message);
+    } finally {
+      setConverting(null);
+    }
   };
 
   const drag = {
@@ -87,9 +103,9 @@ export default function ImageDrop({ value, onChange, onReject, title, hint, icon
   const input = (
     <input
       type="file"
-      accept="image/*"
+      accept={ACCEPT_PICTURES}
       className="sr-only"
-      disabled={disabled}
+      disabled={disabled || Boolean(converting)}
       onChange={e => {
         take(e.target.files);
         e.target.value = '';
@@ -105,20 +121,21 @@ export default function ImageDrop({ value, onChange, onReject, title, hint, icon
           'group relative flex flex-col items-center justify-center gap-3.5 rounded-lg border-2 border-dashed px-6 py-10 text-center transition-all duration-150 focus-within:ring-[3px] focus-within:ring-marker',
           over ? 'scale-[1.01] border-ink bg-marker-soft' : 'border-line-strong bg-paper/50 hover:border-ink hover:bg-marker-soft/50',
           disabled && 'pointer-events-none opacity-50',
+          converting && 'pointer-events-none border-ink bg-marker-soft/60',
           className
         )}
       >
         {input}
         <span className={cn('grid h-12 w-12 place-items-center rounded-md border-2 border-ink bg-marker shadow-hard-sm transition-transform duration-200 group-hover:-rotate-3 group-hover:scale-105', over && '-rotate-6 scale-110')} aria-hidden="true">
-          <Icon className="h-5 w-5 text-ink" />
+          {converting ? <Spinner className="h-5 w-5 text-ink" /> : <Icon className="h-5 w-5 text-ink" />}
         </span>
-        <span>
-          <span className="block text-[15px] font-semibold text-ink">{over ? 'Drop it here' : title}</span>
-          <span className="mt-1 block max-w-xs text-[13px] leading-snug text-muted">{hint}</span>
+        <span aria-live="polite">
+          <span className="block text-[15px] font-semibold text-ink">{converting ? 'Converting your iPhone photo…' : over ? 'Drop it here' : title}</span>
+          <span className="mt-1 block max-w-xs text-[13px] leading-snug text-muted">{converting ? `${converting} is HEIC, which most browsers cannot show. Turning it into a JPEG at full quality.` : hint}</span>
         </span>
         {showPasteHint && (
-          <span className="inline-flex items-center gap-1.5 text-[12px] text-muted">
-            <Kbd>Ctrl</Kbd>
+          <span className="kbd-hint inline-flex items-center gap-1.5 text-[12px] text-muted">
+            <Kbd>{MOD_KEY}</Kbd>
             <Kbd>V</Kbd>
             <span>pastes a screenshot straight in</span>
           </span>

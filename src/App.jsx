@@ -1,6 +1,6 @@
 import React, { Suspense, lazy, useEffect, useState } from 'react';
 import { Routes, Route, NavLink, Navigate, useLocation, useNavigate } from 'react-router-dom';
-import { ArrowRight, ExternalLink, Instagram, KeyRound, LogOut, MessageCircle, Moon, RefreshCw, Search, Sun, WifiOff } from 'lucide-react';
+import { ArrowRight, ExternalLink, Instagram, KeyRound, Keyboard, LogOut, MessageCircle, Moon, RefreshCw, Search, Sun, WifiOff } from 'lucide-react';
 import { useTheme } from './theme/ThemeProvider';
 import { useAuth } from './auth/AuthProvider';
 import ErrorBoundary from './app/ErrorBoundary';
@@ -8,6 +8,8 @@ import PageSkeleton from './app/PageSkeleton';
 import useScrollRestoration from './app/useScrollRestoration';
 import { HIDDEN_PAGES, NAV_GROUPS, PAGES, REDIRECTS, TAB_ITEMS, pageForPath, preloadPage, prefetchAllWhenIdle } from './app/routes';
 import { MOD_KEY, isTypingTarget } from './app/platform';
+import { Cap, ShortcutProvider, useShortcutState, useShortcuts } from './app/shortcuts';
+import { describeKeys } from './app/keys';
 import { BRAND } from './brand';
 import { API_BASE } from './api';
 import { Button, Elapsed, LogoMark, cn, useBusy, useConfirm, useOnline, useSystemStatus } from './ui';
@@ -16,6 +18,26 @@ import { currentStageTitle, useAdaptation } from './adapt/AdaptationProvider';
 // The Ctrl+K palette is downloaded the first time it is opened (or while the app is idle), never with the first screen.
 const loadPalette = () => import('./app/CommandPalette');
 const CommandPalette = lazy(loadPalette);
+
+const LEAVE_QUESTION = {
+  title: 'Leave while your meme is being made?',
+  body: 'It keeps running on the server and will be saved in My Memes when it finishes. You will get a notification here, but this page will stop showing progress.',
+  confirmLabel: 'Leave anyway',
+  cancelLabel: 'Stay here'
+};
+
+/** navigate() that asks first while a meme is being generated (the keyboard's version of GuardedNavLink). */
+function useGuardedNavigate() {
+  const { busy } = useBusy();
+  const confirm = useConfirm();
+  const navigate = useNavigate();
+  const location = useLocation();
+  return async to => {
+    if (location.pathname === to) return;
+    if (busy && !(await confirm(LEAVE_QUESTION))) return;
+    navigate(to);
+  };
+}
 
 /** NavLink that asks before leaving while a meme is being generated. */
 function GuardedNavLink({ to, end, className, children, ...rest }) {
@@ -28,13 +50,7 @@ function GuardedNavLink({ to, end, className, children, ...rest }) {
     if (!busy || e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
     if (location.pathname === to) return;
     e.preventDefault();
-    const leave = await confirm({
-      title: 'Leave while your meme is being made?',
-      body: 'It keeps running on the server and will be saved in My Memes when it finishes. You will get a notification here, but this page will stop showing progress.',
-      confirmLabel: 'Leave anyway',
-      cancelLabel: 'Stay here'
-    });
-    if (leave) navigate(to);
+    if (await confirm(LEAVE_QUESTION)) navigate(to);
   };
   // start downloading the page as soon as the pointer or keyboard reaches its link, so the click feels instant
   const warm = () => preloadPage(pageForPath(to));
@@ -197,13 +213,15 @@ function ThemeSwitch({ className }) {
   const dark = theme === 'dark';
   const label = dark ? 'Switch to the light studio' : 'Switch on Night studio';
   return (
-    <button type="button" onClick={toggle} aria-label={label} title={`${label}${mode === 'auto' ? ' (now automatic: dark from 7 pm)' : ''}`} className={className}>
+    <button type="button" onClick={toggle} aria-label={label} aria-keyshortcuts="Shift+N" title={`${label} (${describeKeys('shift+n')})${mode === 'auto' ? '. Now automatic: dark from 7 pm' : ''}`} className={className}>
       {dark ? <Sun className="h-[18px] w-[18px]" /> : <Moon className="h-[18px] w-[18px]" />}
     </button>
   );
 }
 
 function Sidebar({ onOpenPalette }) {
+  const { leader, openSheet, preloadSheet } = useShortcutState();
+  const going = leader?.first === 'g'; // "G" pressed: every page shows the letter that opens it
   return (
     <aside className="on-ink fixed inset-y-0 left-0 z-50 hidden w-[252px] flex-col bg-ink text-paper md:flex">
       <NavLink to="/" className="group flex items-center gap-3 px-5 pb-5 pt-6" aria-label={`${BRAND.product}, home`}>
@@ -235,11 +253,12 @@ function Sidebar({ onOpenPalette }) {
           <div key={group.label} className="mt-5 first:mt-2">
             <p className="mb-1.5 px-3 font-mono text-micro uppercase text-paper/60">{group.label}</p>
             <ul className="space-y-1">
-              {group.items.map(({ path, label, tag, icon: Icon, end }) => (
+              {group.items.map(({ path, label, tag, icon: Icon, end, key }) => (
                 <li key={path}>
                   <GuardedNavLink
                     to={path}
                     end={end}
+                    title={key ? `${label} (${describeKeys(`g ${key}`)})` : undefined}
                     className={({ isActive }) =>
                       cn(
                         'group flex h-10 items-center gap-3 rounded px-3 text-[14px] font-semibold transition-colors',
@@ -251,10 +270,16 @@ function Sidebar({ onOpenPalette }) {
                       <>
                         <Icon className="h-[18px] w-[18px] shrink-0" strokeWidth={isActive ? 2.4 : 2} aria-hidden="true" />
                         <span className="flex-1 truncate">{label}</span>
-                        {tag && (
-                          <span className={cn('rounded px-1.5 py-px font-mono text-[10px] font-medium uppercase tracking-wider', isActive ? 'bg-ink/10 text-ink' : 'bg-white/10 text-paper/60')}>
-                            {tag}
-                          </span>
+                        {going && key ? (
+                          <Cap tone={isActive ? 'bold' : 'marker'} className="animate-pop uppercase">
+                            {key}
+                          </Cap>
+                        ) : (
+                          tag && (
+                            <span className={cn('rounded px-1.5 py-px font-mono text-[10px] font-medium uppercase tracking-wider', isActive ? 'bg-ink/10 text-ink' : 'bg-white/10 text-paper/60')}>
+                              {tag}
+                            </span>
+                          )
                         )}
                       </>
                     )}
@@ -264,6 +289,17 @@ function Sidebar({ onOpenPalette }) {
             </ul>
           </div>
         ))}
+        <button
+          type="button"
+          onClick={openSheet}
+          onPointerEnter={preloadSheet}
+          onFocus={preloadSheet}
+          className="kbd-hint mt-5 flex h-9 w-full items-center gap-3 rounded px-3 text-left text-[13px] font-semibold text-paper/55 transition-colors hover:bg-white/[0.08] hover:text-white"
+        >
+          <Keyboard className="h-4 w-4 shrink-0" aria-hidden="true" />
+          <span className="flex-1">Keyboard shortcuts</span>
+          <Cap tone="ink">?</Cap>
+        </button>
       </nav>
 
       <div className="space-y-3 border-t border-white/10 p-3">
@@ -445,35 +481,66 @@ function ConnectionBanner() {
 }
 
 export default function App() {
+  return (
+    <ShortcutProvider>
+      <Studio />
+    </ShortcutProvider>
+  );
+}
+
+/**
+ * Keys that work on every page. Pages add their own with useShortcuts (see app/shortcuts.jsx); "?" lists them all.
+ * The letters for "G then …" come from each page's `key` in app/routes.jsx.
+ */
+function useGlobalShortcuts({ togglePalette, openPalette, toggleTheme, theme }) {
+  const go = useGuardedNavigate();
+  const { toggleSheet } = useShortcutState();
+  useShortcuts(
+    [
+      { keys: 'mod+k', label: 'Search and jump', run: togglePalette, inFields: true, dialogs: ['palette'] },
+      { keys: '/', label: 'Search and jump', run: openPalette }, // pages with a search box of their own use / for that
+      { keys: '?', label: 'Show these shortcuts', run: toggleSheet, dialogs: ['shortcuts'] },
+      { keys: 'shift+n', label: theme === 'dark' ? 'Back to the light studio' : 'Switch on Night studio', run: toggleTheme },
+      {
+        keys: 'escape',
+        label: 'Step out of a text field',
+        inFields: true,
+        hidden: true,
+        run: e => {
+          if (!isTypingTarget(e.target)) return false;
+          // a search box clears itself on the first Esc; the second one steps out
+          if (e.target.type === 'search' && e.target.value) return false;
+          e.target.blur();
+          return true;
+        }
+      },
+      ...PAGES.filter(p => p.key).map(p => ({ id: p.id, keys: `g ${p.key}`, label: `Go to ${p.label}`, short: p.short, group: 'Go to', run: () => go(p.path) }))
+    ],
+    { group: 'Anywhere', scope: 'global' }
+  );
+}
+
+function Studio() {
   const navigate = useNavigate();
   const location = useLocation();
   const signOut = useSignOut();
   const { username, authEnabled } = useAuth();
   const { refresh: refreshStatus } = useSystemStatus();
   const { theme, toggle: toggleTheme } = useTheme();
+  const { openSheet } = useShortcutState();
 
-  // Ctrl/⌘+K from anywhere; "/" too when not typing in a field
+  // Ctrl/⌘+K from anywhere; "/" too when not typing in a field (a page with its own search uses "/" for that)
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [paletteWanted, setPaletteWanted] = useState(false);
   const openPalette = () => {
     setPaletteWanted(true);
     setPaletteOpen(true);
   };
-  useEffect(() => {
-    const onKey = e => {
-      if (e.altKey || e.defaultPrevented) return;
-      const combo = (e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k';
-      const slash = e.key === '/' && !e.ctrlKey && !e.metaKey && !isTypingTarget(e.target);
-      if (!combo && !slash) return;
-      // another dialog (a confirmation, the sign-in prompt) is open: leave it alone
-      if (document.querySelector('[role="dialog"][aria-modal="true"]:not([data-palette])')) return;
-      e.preventDefault();
-      setPaletteWanted(true);
-      setPaletteOpen(o => (combo ? !o : true));
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, []);
+  const togglePalette = () => {
+    setPaletteWanted(true);
+    setPaletteOpen(o => !o);
+  };
+  useGlobalShortcuts({ togglePalette, openPalette, toggleTheme, theme });
   // fetch the palette's code once everything else is quiet (not on data-saver or slow connections)
   useEffect(() => {
     const c = navigator.connection;
@@ -528,7 +595,7 @@ export default function App() {
 
       {paletteWanted && (
         <Suspense fallback={null}>
-          <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} ctx={{ navigate, signOut, refreshStatus, user: { username, authEnabled }, theme, toggleTheme }} />
+          <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} ctx={{ navigate, signOut, refreshStatus, user: { username, authEnabled }, theme, toggleTheme, openShortcuts: openSheet }} />
         </Suspense>
       )}
     </div>

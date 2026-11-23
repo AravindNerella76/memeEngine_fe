@@ -297,6 +297,30 @@
   .safe-bottom { padding-bottom: max(env(safe-area-inset-bottom), 0px); }
 }
 
+/* ---------- keyboard shortcuts (app/shortcuts.jsx) ---------- */
+/* a shortcut presses the real button: it sinks into its sticker shadow for a moment, like a click */
+[data-kbd='press'] {
+  transform: translate(2px, 2px) !important;
+  box-shadow: none !important;
+  transition-duration: 70ms !important;
+}
+/* the button cannot be used right now: a small "no" instead of silence */
+[data-kbd='nope'] { animation: kbd-nope 0.36s cubic-bezier(0.36, 0.07, 0.19, 0.97) both; }
+@keyframes kbd-nope {
+  0%, 100% { transform: translateX(0); }
+  20% { transform: translateX(-5px); }
+  40% { transform: translateX(4px); }
+  60% { transform: translateX(-3px); }
+  80% { transform: translateX(2px); }
+}
+/* "G then…" waits a moment for its second key; the bar shows how long */
+.leader-timer { animation: leader-timer linear both; }
+@keyframes leader-timer { from { transform: scaleX(1); } to { transform: scaleX(0); } }
+/* no keyboard on touch screens: key hints would only be noise there */
+@media (hover: none) and (pointer: coarse) {
+  .kbd-hint { display: none !important; }
+}
+
 @media (prefers-reduced-motion: reduce) {
   html { scroll-behavior: auto; }
   *, *::before, *::after {
@@ -304,4 +328,6 @@
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
   }
+  .leader-timer { display: none; }
+  [data-kbd='nope'] { outline: 2px solid rgb(var(--bad)); outline-offset: 2px; }
 }

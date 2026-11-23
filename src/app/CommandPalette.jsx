@@ -4,6 +4,7 @@ import { CornerDownLeft, Search } from 'lucide-react';
 import { Kbd, cn } from '../ui';
 import { lockScroll } from '../ui/Dialog';
 import { buildResults } from './commands';
+import { KeyCaps } from './shortcuts';
 
 /**
  * Ctrl/⌘+K: jump to any page, open a recent meme, change a setting section or run an action without the mouse.
@@ -123,7 +124,9 @@ export default function CommandPalette({ open, onClose, ctx }) {
                   >
                     {Icon && <Icon className="h-[17px] w-[17px] shrink-0" strokeWidth={on ? 2.4 : 2} aria-hidden="true" />}
                     <span className="min-w-0 flex-1 truncate">{item.label}</span>
-                    {item.hint && <span className={cn('shrink-0 font-mono text-[11px] font-medium', on ? 'text-ink/70' : 'text-muted')}>{item.hint}</span>}
+                    {item.hint && <span className={cn('shrink-0 font-mono text-[11px] font-medium', on ? 'text-ink/70' : 'text-muted', item.keys && 'hidden min-[480px]:inline')}>{item.hint}</span>}
+                    {/* its own shortcut, so the palette quietly teaches the faster way next time */}
+                    {item.keys && <KeyCaps keys={item.keys} tone={on ? 'marker' : 'paper'} className="shrink-0 text-ink/60" />}
                     {on && <CornerDownLeft className="h-3.5 w-3.5 shrink-0 text-ink/70" aria-hidden="true" />}
                   </div>
                 );
@@ -140,8 +143,8 @@ export default function CommandPalette({ open, onClose, ctx }) {
           <span className="inline-flex items-center gap-1.5">
             <Kbd>↵</Kbd> open
           </span>
-          <span className="ml-auto">
-            <Kbd>Ctrl</Kbd> <Kbd>K</Kbd> from anywhere
+          <span className="ml-auto inline-flex items-center gap-1.5">
+            <KeyCaps keys="mod+k" /> from anywhere
           </span>
         </div>
       </div>

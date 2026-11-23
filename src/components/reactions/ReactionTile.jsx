@@ -7,13 +7,14 @@ import { folderLabel, reactionThumbUrl } from '../../lib/reactionLibrary';
  * One picture of the reaction library: a small copy that fades in, the whole picture visible on a dark mat.
  * Clicking it runs onClick (open / pick). With `onSelect` a round checkbox appears for choosing several at once.
  */
-export default function ReactionTile({ image, onClick, selected, onSelect, selecting, busy, showFolder, className, priority }) {
+export default function ReactionTile({ image, onClick, selected, onSelect, selecting, busy, showFolder, className, priority, ...rest }) {
   const [state, setState] = useState('loading');
   const label = image.name || `${folderLabel(image.category)} picture`;
   return (
-    <div className={cn('group relative', className)}>
+    <div className={cn('group relative', className)} {...rest}>
       <button
         type="button"
+        data-grid-focus
         onClick={onClick}
         disabled={busy}
         aria-label={label}

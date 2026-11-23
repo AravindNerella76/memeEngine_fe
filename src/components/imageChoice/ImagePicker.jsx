@@ -3,7 +3,7 @@ import { AlertTriangle, CheckCircle2, ImageIcon, Search, Upload, X } from 'lucid
 import { API_BASE, apiFetch } from '../../api';
 import { Alert, Button, Chips, Input, Spinner, cn } from '../../ui';
 
-const ACCEPT = 'image/jpeg,image/png,image/webp,.jpg,.jpeg,.jfif,.png,.webp';
+const ACCEPT = 'image/jpeg,image/png,image/webp,image/heic,image/heif,.jpg,.jpeg,.jfif,.png,.webp,.heic,.heif'; // the server converts HEIC
 
 async function post(url, body, isForm = false) {
   const res = await apiFetch(`${API_BASE}${url}`, {

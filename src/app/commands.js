@@ -1,4 +1,4 @@
-import { FileText, HeartPulse, Instagram, LogOut, MessageCircle, Moon, RefreshCw, Search, Settings2, Sun } from 'lucide-react';
+import { FileText, HeartPulse, Instagram, Keyboard, LogOut, MessageCircle, Moon, RefreshCw, Search, Settings2, Sun } from 'lucide-react';
 import { BRAND } from '../brand';
 import { memeListPath } from '../lib/memeList';
 import { peek } from '../lib/queryCache';
@@ -13,13 +13,15 @@ import { PAGES, openMeme } from './routes';
  *   label     what is shown                hint     small grey text on the right
  *   icon      lucide icon                  keywords extra words that find it
  *   when      (ctx) => boolean, optional   hide it when it does not apply (e.g. only when signed in)
- *   run       (ctx) => void                ctx = { navigate, signOut, refreshStatus, user, theme, toggleTheme }
+ *   keys      its keyboard shortcut, shown on the right (see app/keys.js), optional
+ *   run       (ctx) => void                ctx = { navigate, signOut, refreshStatus, user, theme, toggleTheme, openShortcuts }
  */
 export const ACTIONS = [
   {
     id: 'night-studio',
     label: 'Switch on Night studio',
     hint: 'dark',
+    keys: 'shift+n',
     icon: Moon,
     keywords: 'night dark mode theme appearance evening black',
     when: ctx => ctx.theme !== 'dark' && Boolean(ctx.toggleTheme),
@@ -29,10 +31,21 @@ export const ACTIONS = [
     id: 'day-studio',
     label: 'Turn off Night studio',
     hint: 'back to light',
+    keys: 'shift+n',
     icon: Sun,
     keywords: 'night dark light mode theme appearance day white',
     when: ctx => ctx.theme === 'dark' && Boolean(ctx.toggleTheme),
     run: ctx => ctx.toggleTheme()
+  },
+  {
+    id: 'shortcuts',
+    label: 'Keyboard shortcuts',
+    hint: 'every key',
+    keys: '?',
+    icon: Keyboard,
+    keywords: 'keys keyboard hotkeys shortcut cheat sheet help',
+    when: ctx => Boolean(ctx.openShortcuts),
+    run: ctx => ctx.openShortcuts()
   },
   {
     id: 'health-check',
@@ -115,7 +128,7 @@ export function buildResults(query, ctx) {
 
   add(
     'Go to',
-    PAGES.map(p => ({ id: `page:${p.id}`, label: p.label, hint: p.tag || p.group, icon: p.icon, keywords: p.keywords, run: c => c.navigate(p.path) }))
+    PAGES.map(p => ({ id: `page:${p.id}`, label: p.label, hint: p.tag || p.group, keys: p.key ? `g ${p.key}` : undefined, icon: p.icon, keywords: p.keywords, run: c => c.navigate(p.path) }))
   );
 
   // memes already loaded in this tab: instant, no request (the gallery's first page is cached)

@@ -7,7 +7,7 @@ import { cachedJSON, invalidate } from './queryCache';
  */
 
 const PATH = '/api/reactions';
-const IMAGE_EXT = /\.(jpe?g|jfif|jpe|png|webp)$/i;
+const IMAGE_EXT = /\.(jpe?g|jfif|jpe|png|webp|heic|heif)$/i; // HEIC (iPhone) is converted by the server on import
 /** The server takes at most 12 files per request; smaller batches keep the progress bar moving. */
 const BATCH = 8;
 
@@ -59,7 +59,7 @@ export async function reactionAsFile(image) {
 }
 
 /** Only real picture files (the server checks the content again). */
-export const isPictureFile = file => IMAGE_EXT.test(file.name) || /^image\/(jpeg|png|webp)$/.test(file.type);
+export const isPictureFile = file => IMAGE_EXT.test(file.name) || /^image\/(jpeg|png|webp|heic|heif)$/.test(file.type);
 
 /**
  * Groups files picked with a folder chooser by the folder they sit in: "reactions/shocking/a.jpg" files into the folder

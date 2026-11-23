@@ -26,9 +26,10 @@ const SIZES = { sm: 'sm:max-w-md', md: 'sm:max-w-xl', lg: 'sm:max-w-3xl', xl: 's
 /**
  * Accessible modal: focus moves in and is trapped, Esc and a click on the backdrop close it, the page
  * behind does not scroll, and focus returns to what opened it. On phones it slides up as a sheet.
- * Put `data-autofocus` on the element that should receive focus first.
+ * Put `data-autofocus` on the element that should receive focus first. `name` lets a keyboard shortcut say it also
+ * works over this dialog (see app/shortcuts.jsx); without one, shortcuts stay quiet while it is open.
  */
-export function Dialog({ open, onClose, title, description, size = 'md', tone = 'plain', children, footer, hideClose, className, bodyClassName, icon: Icon }) {
+export function Dialog({ open, onClose, title, description, size = 'md', tone = 'plain', children, footer, hideClose, className, bodyClassName, icon: Icon, name }) {
   const panelRef = useRef(null);
   const titleId = useId();
   const descId = useId();
@@ -86,6 +87,7 @@ export function Dialog({ open, onClose, title, description, size = 'md', tone = 
           ref={panelRef}
           role="dialog"
           aria-modal="true"
+          data-dialog={name}
           aria-labelledby={title ? titleId : undefined}
           aria-describedby={description ? descId : undefined}
           tabIndex={-1}

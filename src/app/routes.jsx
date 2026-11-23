@@ -15,6 +15,7 @@ import { warm } from '../lib/queryCache';
  *   group     sidebar section               tag    small chip next to the label ("AI", "Manual")
  *   icon      lucide icon                   keywords  extra words the palette matches
  *   mobile    show in the phone tab bar     end    match only the exact path (home)
+ *   key       letter for "G then <key>" (keyboard shortcut, see app/shortcuts.jsx); keep them unique
  *   component lazy page (code is downloaded when first needed, and prefetched while idle). The landing page
  *             is the one exception, see eagerPage.
  *   props     (navigate) => props for the page, for pages that hand a meme to the result screen
@@ -65,6 +66,7 @@ export const openMeme = (navigate, from) => meme => navigate(`/meme/${meme.memeI
 export const PAGES = [
   {
     id: 'adapt',
+    key: 'a',
     path: '/',
     end: true,
     label: 'Viral Adaptation',
@@ -79,6 +81,7 @@ export const PAGES = [
   },
   {
     id: 'create',
+    key: 'c',
     path: '/create',
     label: 'Create Meme',
     short: 'Create',
@@ -93,6 +96,7 @@ export const PAGES = [
   },
   {
     id: 'memes',
+    key: 'm',
     path: '/memes',
     label: 'My Memes',
     short: 'Memes',
@@ -106,6 +110,7 @@ export const PAGES = [
   },
   {
     id: 'reactions',
+    key: 'r',
     path: '/reactions',
     label: 'Reactions',
     short: 'Reactions',
@@ -118,6 +123,7 @@ export const PAGES = [
   },
   {
     id: 'layouts',
+    key: 'l',
     path: '/layouts',
     label: 'Layouts',
     short: 'Layouts',
@@ -129,6 +135,7 @@ export const PAGES = [
   },
   {
     id: 'styles',
+    key: 'y',
     path: '/style-guide',
     label: 'Style Guide',
     short: 'Styles',
@@ -140,6 +147,7 @@ export const PAGES = [
   },
   {
     id: 'settings',
+    key: 's',
     path: '/settings',
     label: 'Settings',
     short: 'Settings',
@@ -152,6 +160,7 @@ export const PAGES = [
   },
   {
     id: 'health',
+    key: 'h',
     path: '/health',
     label: 'Health',
     short: 'Health',

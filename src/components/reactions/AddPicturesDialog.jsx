@@ -156,7 +156,7 @@ export default function AddPicturesDialog({ open, onClose, folders, defaultFolde
                 <Button variant="secondary" size="sm" className="mt-3" onClick={() => fileInput.current?.click()} disabled={busy}>
                   Choose pictures
                 </Button>
-                <input ref={fileInput} type="file" multiple accept="image/jpeg,image/png,image/webp,.jfif" className="sr-only" tabIndex={-1} onChange={e => (pickFiles(e.target.files), (e.target.value = ''))} />
+                <input ref={fileInput} type="file" multiple accept="image/jpeg,image/png,image/webp,image/heic,image/heif,.jfif,.heic,.heif" className="sr-only" tabIndex={-1} onChange={e => (pickFiles(e.target.files), (e.target.value = ''))} />
                 {files.length > 0 && (
                   <p className="mt-3 text-[13px] text-muted">
                     <strong className="text-ink">{files.length}</strong> chosen · {formatBytes(files.reduce((n, f) => n + f.size, 0))}{' '}

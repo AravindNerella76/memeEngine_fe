@@ -10,6 +10,7 @@ import AccountSection from './AccountSection';
 import NotificationsSection from './NotificationsSection';
 import AppearanceSection from './AppearanceSection';
 import { Alert, Badge, Button, EmptyState, PageHeader, Skeleton, cn, useAvailability, useConfirm, useDocumentTitle, useToast } from '../../ui';
+import { KeyCaps, press, useShortcuts } from '../../app/shortcuts';
 
 /**
  * THE list of settings sections, in menu order. To add one:
@@ -198,6 +199,34 @@ export default function SettingsPage() {
     showToast('info', 'Defaults loaded for every section. Review, then Save.');
   };
 
+  // Keyboard: Ctrl/⌘+S saves (never the browser's "save this page"), [ and ] walk the sections
+  const stepSection = by => {
+    const i = SECTIONS.findIndex(x => x.id === section);
+    const next = SECTIONS[(i + by + SECTIONS.length) % SECTIONS.length];
+    setSection(next.id);
+    window.scrollTo({ top: 0, behavior: 'instant' });
+  };
+  useShortcuts([
+    {
+      keys: 'mod+s',
+      label: 'Save changes',
+      inFields: true,
+      run: () => {
+        if (!draft) return; // still loading: just keep the browser's save dialog away
+        if (!dirty) {
+          showToast('info', 'Everything is already saved.');
+          return;
+        }
+        // the button shakes "no" when it cannot save; the toast says why
+        press('settings-save');
+        if (errorCount) showToast('error', `Fix ${errorCount} highlighted value${errorCount === 1 ? '' : 's'} before saving.`);
+        else if (!net.ok) showToast('error', `${net.reason} Your changes are kept here until you can save.`);
+      }
+    },
+    { keys: '[', label: 'Previous section', when: Boolean(draft), run: () => stepSection(-1) },
+    { keys: ']', label: 'Next section', when: Boolean(draft), run: () => stepSection(1) }
+  ]);
+
   if (loadError) {
     return (
       <EmptyState
@@ -284,6 +313,7 @@ export default function SettingsPage() {
                     type="button"
                     onClick={() => setSection(id)}
                     aria-current={active ? 'page' : undefined}
+                    title={active ? '[ and ] move between sections' : undefined}
                     className={cn(
                       'flex h-11 w-full items-center gap-2.5 rounded px-3.5 text-left text-[14px] font-semibold transition-colors',
                       active ? 'bg-ink text-paper shadow-hard-sm' : 'border border-line bg-surface text-ink-3 hover:border-ink hover:text-ink xl:border-transparent xl:bg-transparent xl:hover:bg-ink/[0.06]'
@@ -354,8 +384,9 @@ export default function SettingsPage() {
           <Button variant="on-ink" size="sm" onClick={discard} disabled={saving} leftIcon={<Undo2 className="h-3.5 w-3.5" />}>
             Discard
           </Button>
-          <Button variant="marker-on-ink" size="sm" onClick={save} loading={saving} disabled={errorCount > 0 || !net.ok} leftIcon={<Save className="h-3.5 w-3.5" />}>
+          <Button variant="marker-on-ink" size="sm" onClick={save} loading={saving} disabled={errorCount > 0 || !net.ok} leftIcon={<Save className="h-3.5 w-3.5" />} data-key-action="settings-save" aria-keyshortcuts="Control+S Meta+S">
             Save changes
+            <KeyCaps keys="mod+s" tone="marker" className="ml-0.5 opacity-80" />
           </Button>
         </div>
       )}

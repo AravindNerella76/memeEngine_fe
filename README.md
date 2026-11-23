@@ -37,6 +37,8 @@ The look comes from the memes themselves: ink black, the `#FFE500` marker yellow
 
 **Adding a Ctrl+K command** is one object in `ACTIONS` in `src/app/commands.js`. Pages and settings sections appear in the palette by themselves.
 
+**Keyboard shortcuts** (press `?` in the studio for the full list) come from one listener in `src/app/shortcuts.jsx`. A page adds its own with `useShortcuts([{ keys, label, run, when }])`; they show up in the `?` sheet by themselves, page keys first. Give a page a `key` in `PAGES` and "G then that letter" opens it. Prefer `run: () => press('name')` with `data-key-action="name"` on the real button: the key then clicks it, so confirmations and disabled states behave exactly as for the mouse, and the button visibly presses (or shakes when it can't be used). Rules the listener enforces: nothing fires over a dialog (unless it names that dialog), single keys never fire while typing or while an Indic input method is composing, and keys are hidden on touch screens. The key syntax lives in `src/app/keys.js`.
+
 **Adding a settings section**: titles in `SECTION_INFO` (`components/settings/settingsModel.js`), the form component, one line in `SECTIONS` in `SettingsPage.jsx`.
 
 What is in place, and the rules that keep it working:

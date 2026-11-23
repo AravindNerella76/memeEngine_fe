@@ -1,7 +1,9 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { ACCEPT_PICTURES, isHeicFile, toBrowserImages } from '../lib/heic';
 import { AlertCircle, Check, ImageOff, LayoutTemplate, Pencil, Plus, RefreshCw, Trash2, Upload, X } from 'lucide-react';
 import { API_BASE, apiFetch } from '../api';
 import { Alert, Badge, Button, Card, EmptyState, Input, PageHeader, Skeleton, Spinner, cn, formatBytes, friendlyDate, useConfirm, useDocumentTitle, useToast } from '../ui';
+import { press, useShortcuts } from '../app/shortcuts';
 
 const OK_TYPES = /^image\/(jpeg|png|webp)$/;
 const SOURCE_LABEL = { viral_auto: 'Learned from a viral meme', whatsapp: 'Added on WhatsApp', api: 'Added here' };
@@ -73,7 +75,7 @@ function DropZone({ onFiles, disabled }) {
         ref={input}
         type="file"
         multiple
-        accept="image/jpeg,image/png,image/webp"
+        accept={ACCEPT_PICTURES}
         className="sr-only"
         aria-label="Choose example memes"
         onChange={e => {
@@ -262,9 +264,15 @@ export default function LayoutsPage() {
     };
   }, [fetchLayouts]);
 
-  const addFiles = files => {
+  const addFiles = async picked => {
     const rejected = [];
     const next = [];
+    // iPhone photos (HEIC) become JPEGs first: browsers other than Safari cannot show them
+    const heic = picked.filter(isHeicFile);
+    if (heic.length) toast.info(`Converting ${heic.length === 1 ? 'an iPhone photo' : `${heic.length} iPhone photos`}…`);
+    const { files: converted, failed } = await toBrowserImages(heic);
+    for (const f of failed) rejected.push(f.name);
+    const files = [...picked.filter(f => !isHeicFile(f)), ...converted];
     for (const file of files) {
       if (!OK_TYPES.test(file.type)) rejected.push(file.name);
       else next.push({ id: `${Date.now()}-${Math.random()}`, file, preview: URL.createObjectURL(file), name: '', status: 'ready', message: '' });
@@ -358,6 +366,8 @@ export default function LayoutsPage() {
 
   const unnamed = layouts.filter(l => !l.name).length;
 
+  useShortcuts([{ keys: 'r', label: 'Refresh', when: !loading, run: () => void press('layouts-refresh') }]);
+
   return (
     <div>
       <PageHeader
@@ -372,7 +382,7 @@ export default function LayoutsPage() {
         }
         description="The meme structures the engine knows: where the images go, the header and the reaction panel. Only the structure is saved; fonts and colours always come from Settings."
         actions={
-          <Button variant="secondary" onClick={fetchLayouts} disabled={loading} leftIcon={<RefreshCw className={cn('h-4 w-4', loading && 'animate-spin')} />}>
+          <Button variant="secondary" onClick={fetchLayouts} disabled={loading} leftIcon={<RefreshCw className={cn('h-4 w-4', loading && 'animate-spin')} />} data-key-action="layouts-refresh" aria-keyshortcuts="R" title="Refresh (R)">
             Refresh
           </Button>
         }

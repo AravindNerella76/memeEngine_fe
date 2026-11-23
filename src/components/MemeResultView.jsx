@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { ArrowLeft, Check, CheckCircle2, Download, ExternalLink, GitBranch, HelpCircle, ImageOff, Info, Instagram, RotateCcw, ShieldCheck, Wand2 } from 'lucide-react';
 import GenerationDetailsModal from './GenerationDetailsModal';
@@ -7,7 +7,8 @@ import { API_BASE, apiFetch } from '../api';
 import { cachedJSON, peek } from '../lib/queryCache';
 import { MATCH_LABEL, providerName, RightsBadge, rightsSummary, sourceTypeText } from './ImageRights';
 import ReplaceImagesPanel from './imageChoice/ReplaceImagesPanel';
-import { Alert, Badge, Button, Card, CardHeader, DataRow, Disclosure, EmptyState, Kbd, Skeleton, Textarea, cn, friendlyDate, useAvailability, useDocumentTitle } from '../ui';
+import { KeyCaps, focusField, press, useShortcuts } from '../app/shortcuts';
+import { Alert, Badge, Button, Card, CardHeader, DataRow, Disclosure, EmptyState, Skeleton, Textarea, cn, friendlyDate, useAvailability, useDocumentTitle } from '../ui';
 
 /** One subject image: rights label, provider, source link (when its terms allow storing it), credit. */
 function SourceRow({ asset, index }) {
@@ -99,6 +100,37 @@ function StageImage({ src, placeholder }) {
   );
 }
 
+/**
+ * The result page's keys. A component of its own because the page returns early while the meme loads, and hooks
+ * cannot come after an early return.
+ */
+function ResultShortcuts({ backLabel, onBack, versions, active, onVersion, canPublish, hasDetails, onDetails, instructionsRef, instructions, regenerating, formats }) {
+  const at = versions.findIndex(v => v.versionNumber === active);
+  const step = by => {
+    const next = versions[at + by];
+    if (next) onVersion(next.versionNumber);
+  };
+  useShortcuts([
+    { keys: 'escape', label: backLabel, run: onBack },
+    { keys: 'p', label: 'Publish to Instagram', when: canPublish, run: () => void press('publish') },
+    { keys: 'd', label: `Download ${formats[0].toUpperCase()}`, run: () => void press(`download-${formats[0]}`) },
+    { keys: 'shift+d', label: `Download ${formats[1].toUpperCase()}`, run: () => void press(`download-${formats[1]}`) },
+    { keys: 'e', label: 'Say what to change', when: !regenerating, run: () => void focusField(instructionsRef.current) },
+    {
+      keys: 'mod+enter',
+      label: 'Make the new version',
+      inFields: true,
+      when: !regenerating,
+      // from anywhere once something is written; in the box itself it also explains what is missing
+      run: () => (instructions.trim() || document.activeElement === instructionsRef.current ? void press('regenerate') : false)
+    },
+    { keys: ['[', 'left'], label: 'Older version', when: versions.length > 1 && at > 0, run: () => step(-1) },
+    { keys: [']', 'right'], label: 'Newer version', when: versions.length > 1 && at >= 0 && at < versions.length - 1, run: () => step(1) },
+    { keys: 'i', label: 'Generation details', when: hasDetails, run: onDetails }
+  ]);
+  return null;
+}
+
 export default function MemeResultView({ meme: propMeme, onNewMeme, onMemeUpdated, backLabel: propBackLabel }) {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -118,6 +150,7 @@ export default function MemeResultView({ meme: propMeme, onNewMeme, onMemeUpdate
   const [showDetails, setShowDetails] = useState(false);
   const [showInstagramModal, setShowInstagramModal] = useState(false);
   const [clarification, setClarification] = useState(null);
+  const instructionsRef = useRef(null);
 
   useDocumentTitle(meme ? meme.content?.headline || meme.content?.topic || 'Meme' : 'Meme');
   const net = useAvailability({ internet: true }); // publishing and AI changes reach outside the studio
@@ -269,15 +302,29 @@ export default function MemeResultView({ meme: propMeme, onNewMeme, onMemeUpdate
 
   return (
     <div>
+      <ResultShortcuts
+        backLabel={fromTab === 'history' ? 'Back to My Memes' : fromTab === 'create' ? 'Back to Create Meme' : 'Back to Viral Adaptation'}
+        onBack={handleBack}
+        versions={versions}
+        active={activeVersionNumber}
+        onVersion={setActiveVersionNumber}
+        canPublish={!isLite && net.ok}
+        hasDetails={meme.pipeline === 'viral_adaptation_v2'}
+        onDetails={() => setShowDetails(true)}
+        instructionsRef={instructionsRef}
+        instructions={instructions}
+        regenerating={regenerating}
+        formats={downloadFormats}
+      />
       {/* Top bar */}
       <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
-        <Button variant="secondary" size="sm" onClick={handleBack} leftIcon={<ArrowLeft className="h-4 w-4" />}>
+        <Button variant="secondary" size="sm" onClick={handleBack} leftIcon={<ArrowLeft className="h-4 w-4" />} aria-keyshortcuts="Escape" title="Back (Esc)">
           {backLabel}
         </Button>
 
         <div className="flex flex-wrap items-center gap-2">
           {meme.pipeline === 'viral_adaptation_v2' && (
-            <Button variant="secondary" size="sm" onClick={() => setShowDetails(true)} leftIcon={<Info className="h-4 w-4" />}>
+            <Button variant="secondary" size="sm" onClick={() => setShowDetails(true)} leftIcon={<Info className="h-4 w-4" />} aria-keyshortcuts="I" title="Generation details (I)">
               Generation details
             </Button>
           )}
@@ -336,7 +383,7 @@ export default function MemeResultView({ meme: propMeme, onNewMeme, onMemeUpdate
                           type="button"
                           onClick={() => setActiveVersionNumber(v.versionNumber)}
                           aria-current={active ? 'true' : undefined}
-                          title={v.instruction}
+                          title={`${v.instruction}  ·  [ and ] step through versions`}
                           className="group block w-[78px] text-left"
                         >
                           <span
@@ -373,8 +420,9 @@ export default function MemeResultView({ meme: propMeme, onNewMeme, onMemeUpdate
 
           {/* Publish + download */}
           <Card pad="md" className="space-y-3">
-            <Button variant="primary" size="lg" className="w-full" onClick={() => setShowInstagramModal(true)} disabled={isLite || !net.ok} title={!net.ok ? net.reason : undefined} leftIcon={<Instagram className="h-[18px] w-[18px]" />}>
+            <Button variant="primary" size="lg" className="w-full" onClick={() => setShowInstagramModal(true)} disabled={isLite || !net.ok} title={!net.ok ? net.reason : undefined} leftIcon={<Instagram className="h-[18px] w-[18px]" />} data-key-action="publish" aria-keyshortcuts="P">
               Publish to Instagram
+              <KeyCaps keys="p" tone="marker" className="ml-1 opacity-80" />
             </Button>
 
             {isPublishedOnInstagram && (
@@ -403,6 +451,9 @@ export default function MemeResultView({ meme: propMeme, onNewMeme, onMemeUpdate
                   href={`${API_BASE}/api/memes/${memeId}/download/${fmt}?version=${activeVersionNumber}`}
                   download={`kanyaraasi_${memeId.substring(0, 8)}_v${activeVersionNumber}.${fmt}`}
                   leftIcon={<Download className="h-4 w-4" />}
+                  data-key-action={`download-${fmt}`}
+                  aria-keyshortcuts={i === 0 ? 'D' : 'Shift+D'}
+                  title={`Download ${fmt.toUpperCase()} (${i === 0 ? 'D' : 'Shift D'})`}
                 >
                   {fmt.toUpperCase()}
                   <span className="font-mono text-[12px] font-medium opacity-70">v{activeVersionNumber}</span>
@@ -433,12 +484,11 @@ export default function MemeResultView({ meme: propMeme, onNewMeme, onMemeUpdate
             <CardHeader icon={RotateCcw} title="Change it in plain words" description="Say what to change. Only that changes; everything else stays, and the result is saved as a new version." />
 
             <Textarea
+              ref={instructionsRef}
               rows={3}
               value={instructions}
               onChange={e => setInstructions(e.target.value)}
-              onKeyDown={e => {
-                if ((e.ctrlKey || e.metaKey) && e.key === 'Enter' && !regenerating) handleRegenerate();
-              }}
+              aria-keyshortcuts="E"
               disabled={regenerating}
               placeholder='e.g. "Make the headline 20% bigger" or "Use Anton font"'
               aria-label="What should change"
@@ -459,12 +509,17 @@ export default function MemeResultView({ meme: propMeme, onNewMeme, onMemeUpdate
               ))}
             </div>
 
-            <Button variant="dark" size="lg" className="w-full" loading={regenerating} disabled={!net.ok} onClick={handleRegenerate} leftIcon={<Wand2 className="h-[18px] w-[18px]" />}>
+            <Button variant="dark" size="lg" className="w-full" loading={regenerating} disabled={!net.ok} onClick={handleRegenerate} leftIcon={<Wand2 className="h-[18px] w-[18px]" />} data-key-action="regenerate" aria-keyshortcuts="Control+Enter Meta+Enter">
               {regenerating ? 'Making a new version…' : `Make version ${(meme.currentVersion || 1) + 1}`}
             </Button>
             <p className="mt-2.5 flex items-center justify-center gap-1.5 text-[12px] text-muted">
-              <Kbd>Ctrl</Kbd>
-              <Kbd>Enter</Kbd> to apply{!net.ok && <span className="ml-1 font-semibold text-bad">· {net.reason}</span>}
+              <span className="kbd-hint inline-flex items-center gap-1.5">
+                <KeyCaps keys="mod+enter" /> to apply
+              </span>
+              <span className="kbd-hint inline-flex items-center gap-1.5 before:mx-1 before:content-['·']">
+                <KeyCaps keys="e" /> to write
+              </span>
+              {!net.ok && <span className="ml-1 font-semibold text-bad">· {net.reason}</span>}
             </p>
           </Card>
 

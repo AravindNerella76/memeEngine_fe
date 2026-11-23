@@ -22,6 +22,7 @@ import {
 } from 'lucide-react';
 import { cachedJSON } from '../lib/queryCache';
 import { MOD_KEY } from '../app/platform';
+import { KeyCaps, press, useShortcuts } from '../app/shortcuts';
 import { markReactionUsed, reactionAsFile } from '../lib/reactionLibrary';
 import ReactionPicker from './reactions/ReactionPicker';
 import ReactionFraming from './reactions/ReactionFraming';
@@ -148,7 +149,8 @@ const WAIT_TIPS = [
   'You can leave this page. The meme keeps being made and lands in My Memes.',
   `Press ${MOD_KEY} K from anywhere to jump to a page, a recent meme or a setting.`,
   'Each meme keeps its own copy of the style, so changing Settings never alters an old meme.',
-  'Paste a screenshot with ' + MOD_KEY + ' V anywhere on this page to fill the next empty slot.'
+  'Paste a screenshot with ' + MOD_KEY + ' V anywhere on this page to fill the next empty slot.',
+  'Press ? to see every keyboard shortcut. G then M opens My Memes without touching the mouse.'
 ];
 
 /** One tip at a time, changing every few seconds. Own state: the form above never re-renders for it. */
@@ -427,6 +429,35 @@ export default function ViralAdaptationForm() {
     const focusable = el.querySelector('textarea, input:not([type=hidden])');
     if (focusable) setTimeout(() => focusable.focus({ preventScroll: true }), 350);
   };
+
+  const openPictures = () => {
+    setPicturesOpen(true);
+    setTimeout(() => document.getElementById('choose-pictures-section')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 60);
+  };
+
+  // Keyboard: the steps by number, and Ctrl+Enter from anywhere on the page (also while typing the punchline)
+  useShortcuts([
+    {
+      keys: 'mod+enter',
+      label: 'Adapt and generate',
+      inFields: true,
+      when: !loading,
+      run: () => {
+        if (allReady) {
+          press('adapt-generate');
+          return;
+        }
+        // not ready: say what is missing and take them there, instead of a button that silently does nothing
+        press('adapt-generate');
+        goTo(inputsReady.find(i => !i.ok).target);
+        toast.info(`Still needed: ${missing.join(', ')}.`);
+      }
+    },
+    { keys: '1', label: 'Go to the reference screenshot', when: !loading, run: () => goTo('step-reference') },
+    { keys: '2', label: 'Go to your reaction image', when: !loading, run: () => goTo('step-reaction') },
+    { keys: '3', label: 'Type the punchline', when: !loading, run: () => goTo('step-punchline') },
+    { keys: 'o', label: 'Choose your own pictures', when: !loading, run: openPictures }
+  ]);
 
   // Paste a screenshot (Ctrl+V) into the first empty image slot
   const slots = useRef({});
@@ -828,8 +859,9 @@ export default function ViralAdaptationForm() {
                 ))}
               </ul>
 
-              <Button type="submit" variant="primary" size="lg" disabled={!allReady || !net.ok} leftIcon={<Wand2 className="h-[18px] w-[18px]" />} className="mt-5 w-full">
+              <Button type="submit" variant="primary" size="lg" disabled={!allReady || !net.ok} leftIcon={<Wand2 className="h-[18px] w-[18px]" />} className="mt-5 w-full" data-key-action="adapt-generate" aria-keyshortcuts="Control+Enter Meta+Enter">
                 Adapt and generate
+                <KeyCaps keys="mod+enter" tone="marker" className="ml-1 opacity-80" />
               </Button>
               <p className="mt-3 text-center text-[12.5px] leading-snug text-muted">
                 {!net.ok ? net.reason : allReady ? 'Takes about 2–4 minutes. You can leave while it works.' : `Still needed: ${missing.join(', ')}.`}
@@ -875,7 +907,7 @@ export default function ViralAdaptationForm() {
                 <span className="block font-bold">{allReady ? 'Ready to generate' : `${readyCount} of ${inputsReady.length} inputs in`}</span>
                 {!allReady && <span className="block truncate text-muted">Needs {missing[0]}</span>}
               </span>
-              <Button type="submit" variant="primary" size="sm" disabled={!allReady || !net.ok} leftIcon={<Wand2 className="h-4 w-4" />}>
+              <Button type="submit" variant="primary" size="sm" disabled={!allReady || !net.ok} leftIcon={<Wand2 className="h-4 w-4" />} data-key-action="adapt-generate">
                 Generate
               </Button>
             </>

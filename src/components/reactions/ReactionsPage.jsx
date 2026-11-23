@@ -5,6 +5,8 @@ import { Badge, Button, Chips, Dialog, EmptyState, Field, Input, PageHeader, Ske
 import { bulkReactions, folderLabel, listReactionFolders, listReactions, refreshReactions } from '../../lib/reactionLibrary';
 import ReactionTile from './ReactionTile';
 import AddPicturesDialog from './AddPicturesDialog';
+import { focusedGridItem, moveInGrid } from '../../lib/gridNav';
+import { feedback, focusField, press, useShortcuts } from '../../app/shortcuts';
 import ReactionDetailDialog from './ReactionDetailDialog';
 
 const PAGE = 48;
@@ -217,6 +219,33 @@ export default function ReactionsPage() {
   const showSkeleton = !list.loaded && !error;
   const selecting = picked.size > 0;
 
+  // Keyboard: the same moves as My Memes; X ticks the picture in focus, Esc lets go of the selection
+  const gridRef = useRef(null);
+  const searchRef = useRef(null);
+  const hasTiles = list.items.length > 0;
+  const move = dir => e => (/^Arrow/.test(e.key) && !focusedGridItem(gridRef.current) ? false : void moveInGrid(gridRef.current, dir, { instant: e.repeat }));
+  useShortcuts([
+    { keys: '/', label: 'Search reactions', run: () => void focusField(searchRef.current) },
+    { keys: ['j', 'right'], label: 'Next picture', repeat: true, when: hasTiles, run: move('next') },
+    { keys: ['k', 'left'], label: 'Previous picture', repeat: true, when: hasTiles, run: move('prev') },
+    { keys: 'down', label: 'Picture below', repeat: true, when: hasTiles, run: move('down') },
+    { keys: 'up', label: 'Picture above', repeat: true, when: hasTiles, run: move('up') },
+    { keys: 'enter', label: 'Open the picture in focus', when: hasTiles, run: () => false }, // the tile's own button does it
+    {
+      keys: 'x',
+      label: 'Select the picture in focus',
+      when: hasTiles,
+      run: () => {
+        const box = focusedGridItem(gridRef.current)?.querySelector('[role="checkbox"]');
+        if (!box) return false;
+        feedback(box, 'press');
+        box.click();
+      }
+    },
+    { keys: 'escape', label: 'Clear the selection', when: selecting, run: () => setPicked(new Set()) },
+    { keys: 'a', label: 'Add pictures', when: net.ok, run: () => void press('reactions-add') }
+  ]);
+
   return (
     <div className={cn(selecting && 'pb-24')}>
       <PageHeader
@@ -237,7 +266,7 @@ export default function ReactionsPage() {
             <Button variant="secondary" onClick={() => setAdding('folders')} leftIcon={<FolderUp className="h-4 w-4" />} disabled={!net.ok} title={net.ok ? undefined : net.reason}>
               Import folders
             </Button>
-            <Button variant="primary" onClick={() => setAdding('files')} leftIcon={<ImagePlus className="h-4 w-4" />} disabled={!net.ok} title={net.ok ? undefined : net.reason}>
+            <Button variant="primary" onClick={() => setAdding('files')} leftIcon={<ImagePlus className="h-4 w-4" />} disabled={!net.ok} title={net.ok ? 'Add pictures (A)' : net.reason} data-key-action="reactions-add" aria-keyshortcuts="A">
               Add pictures
             </Button>
           </>
@@ -264,7 +293,7 @@ export default function ReactionsPage() {
             <label className="relative block">
               <span className="sr-only">Search reactions</span>
               <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" aria-hidden="true" />
-              <Input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search by folder, name or tag (e.g. brahmanandam)" className="!pl-10" type="search" autoComplete="off" />
+              <Input ref={searchRef} value={search} onChange={e => setSearch(e.target.value)} placeholder="Search by folder, name or tag (e.g. brahmanandam)" className="!pl-10" type="search" autoComplete="off" aria-keyshortcuts="/" />
             </label>
             {folders.loaded ? <Chips value={folder} onChange={setFolder} options={folderOptions} label="Folders" scroll /> : <Skeleton className="h-9 w-2/3" />}
           </div>
@@ -289,9 +318,9 @@ export default function ReactionsPage() {
               {query ? `No picture matches “${query}”.` : 'This folder is empty.'}
             </EmptyState>
           ) : (
-            <div className="grid grid-cols-[repeat(auto-fill,minmax(9.5rem,1fr))] gap-3.5">
+            <div ref={gridRef} className="grid grid-cols-[repeat(auto-fill,minmax(9.5rem,1fr))] gap-3.5">
               {list.items.map((m, i) => (
-                <ReactionTile key={m.imageId} image={m} priority={i < 8} showFolder={folder === 'all'} selected={picked.has(m.imageId)} selecting={selecting} onSelect={() => toggle(m.imageId)} onClick={() => (selecting ? toggle(m.imageId) : setDetail(m))} />
+                <ReactionTile data-grid-item key={m.imageId} image={m} priority={i < 8} showFolder={folder === 'all'} selected={picked.has(m.imageId)} selecting={selecting} onSelect={() => toggle(m.imageId)} onClick={() => (selecting ? toggle(m.imageId) : setDetail(m))} />
               ))}
             </div>
           )}
@@ -321,7 +350,7 @@ export default function ReactionsPage() {
           <Button variant="danger-soft" size="sm" onClick={removePicked} leftIcon={<Trash2 className="h-3.5 w-3.5" />} disabled={!net.ok}>
             Remove
           </Button>
-          <Button variant="ghost" size="icon-sm" onClick={() => setPicked(new Set())} aria-label="Clear selection" title="Clear selection">
+          <Button variant="ghost" size="icon-sm" onClick={() => setPicked(new Set())} aria-label="Clear selection" title="Clear selection (Esc)" aria-keyshortcuts="Escape">
             <X className="h-4 w-4" />
           </Button>
         </div>

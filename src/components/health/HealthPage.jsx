@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { ArrowRight, Check, CheckCircle2, Copy, Database, HeartPulse, Instagram, KeyRound, Loader2, MessageCircle, MinusCircle, RefreshCw, Server, Sparkles, Bell, TriangleAlert, XCircle } from 'lucide-react';
 import { API_BASE, apiFetch } from '../../api';
 import { Alert, Button, Card, PageHeader, Skeleton, cn, useDocumentTitle } from '../../ui';
+import { feedback, press, useShortcuts } from '../../app/shortcuts';
 
 /**
  * One screen that answers "is everything working?": every connection the studio depends on, in plain words, with what
@@ -62,7 +63,7 @@ function Verdict({ report, checking, onCheck }) {
             {checking ? 'Asking Meta and the services…' : `Checked ${since(report.checkedAt)}${report.live ? '' : ' · quick check'}`}
           </p>
         </div>
-        <Button variant={overall === 'ok' ? 'dark' : 'primary'} onClick={onCheck} loading={checking} leftIcon={<RefreshCw className="h-4 w-4" />} className="shrink-0">
+        <Button variant={overall === 'ok' ? 'dark' : 'primary'} onClick={onCheck} loading={checking} leftIcon={<RefreshCw className="h-4 w-4" />} className="shrink-0" data-key-action="health-check" aria-keyshortcuts="R" title="Check again (R)">
           {checking ? 'Checking…' : 'Check again'}
         </Button>
       </div>
@@ -153,6 +154,19 @@ export default function HealthPage() {
     }
   };
 
+  useShortcuts([
+    { keys: 'r', label: 'Check everything again', when: !checking, run: () => void press('health-check') },
+    {
+      keys: 'c',
+      label: 'Copy the report',
+      when: Boolean(report),
+      run: () => {
+        feedback(document.querySelector('[data-key-action="health-copy"]'), 'press');
+        copy();
+      }
+    }
+  ]);
+
   return (
     <div className="page-enter mx-auto max-w-4xl">
       <PageHeader
@@ -161,7 +175,7 @@ export default function HealthPage() {
         description="Every connection the studio depends on, checked in plain words, with what to do when something is off."
         actions={
           report && (
-            <Button variant="ghost" size="sm" onClick={copy} leftIcon={copied ? <Check className="h-3.5 w-3.5 text-ok" strokeWidth={3} /> : <Copy className="h-3.5 w-3.5" />}>
+            <Button variant="ghost" size="sm" onClick={copy} data-key-action="health-copy" aria-keyshortcuts="C" title="Copy report (C)" leftIcon={copied ? <Check className="h-3.5 w-3.5 text-ok" strokeWidth={3} /> : <Copy className="h-3.5 w-3.5" />}>
               {copied ? 'Copied' : 'Copy report'}
             </Button>
           )
