@@ -88,7 +88,7 @@ const VIRAL_SAMPLES = [
 ];
 
 // Only fonts that are installed on the server can be rendered.
-const AVAILABLE_FONTS = ['Arial Black', 'Anton', 'Impact', 'Intrepid ExtraBold'];
+const AVAILABLE_FONTS = ['Poppins Black', 'Arial Black', 'Anton', 'Impact', 'Intrepid ExtraBold'];
 
 /** One numbered step of the form. Turns yellow with a tick once its input is in. */
 function Step({ n, title, hint, done, id, children, aside }) {
@@ -366,10 +366,16 @@ export default function ViralAdaptationForm() {
             weight: ty.weight,
             position: ty.position,
             lineHeight: ty.lineHeight,
+            letterSpacing: ty.letterSpacing || 0,
             fill: fx.fill.color,
             highlight: fx.highlight.enabled ? fx.highlight.color : fx.fill.color,
             stroke: fx.stroke.enabled ? fx.stroke.color : null,
-            strokeWidth: fx.stroke.width
+            strokeWidth: fx.stroke.width,
+            shadowBlur: fx.shadow.enabled ? fx.shadow.blur : 0,
+            shadowX: fx.shadow.offsetX,
+            shadowY: fx.shadow.offsetY,
+            shade: fx.shade?.enabled ? fx.shade.opacity : 0,
+            setupScale: s.canvas?.punchlineSetupScale || 0.74
           });
         }
       })

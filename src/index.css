@@ -297,6 +297,30 @@
   .safe-bottom { padding-bottom: max(env(safe-area-inset-bottom), 0px); }
 }
 
+/* The house style's English meme font, for the live punchline preview (the server draws the real meme with the same
+   file). Downloaded only when a preview uses it. */
+@font-face {
+  font-family: 'Poppins Black';
+  src: url('/fonts/Poppins-Black.ttf') format('truetype');
+  font-weight: 100 900;
+  font-display: swap;
+}
+
+/* Intrepid, the font in the owner's Settings: the same file the server draws memes with, so the live punchline
+   preview shows the real letters instead of a fallback. Downloaded only when a preview uses it. */
+@font-face {
+  font-family: 'Intrepid';
+  src: url('/fonts/Intrepid-ExtraBold.ttf') format('truetype');
+  font-weight: 100 900;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Intrepid ExtraBold';
+  src: url('/fonts/Intrepid-ExtraBold.ttf') format('truetype');
+  font-weight: 100 900;
+  font-display: swap;
+}
+
 /* ---------- keyboard shortcuts (app/shortcuts.jsx) ---------- */
 /* a shortcut presses the real button: it sinks into its sticker shadow for a moment, like a click */
 [data-kbd='press'] {

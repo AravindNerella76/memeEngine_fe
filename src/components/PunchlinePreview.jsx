@@ -32,17 +32,22 @@ function wrap(text, font, maxWidth) {
 }
 
 export const DEFAULT_PUNCH_STYLE = {
-  english: 'Anton',
+  english: 'Intrepid ExtraBold',
   telugu: 'Ramabhadra',
   size: 64,
   weight: 'bold',
   position: 'bottom',
-  lineHeight: 1.2,
+  lineHeight: 0.94,
+  letterSpacing: 2,
   fill: '#FFFFFF',
-  highlight: '#FFE500',
+  highlight: '#FAE944',
   stroke: '#000000',
-  strokeWidth: 4,
-  shadowBlur: 13
+  strokeWidth: 5,
+  shadowBlur: 3,
+  shadowX: 3,
+  shadowY: 3,
+  shade: 1,
+  setupScale: 0.82
 };
 
 /**
@@ -96,7 +101,13 @@ export default function PunchlinePreview({ image, text, style: given, englishFon
           <span className="rounded-full border border-white/15 bg-white/10 px-3 py-1 text-[12px] font-medium text-paper/80">Add your reaction image to preview on it</span>
         </div>
       )}
-      <div className="absolute inset-0 bg-gradient-to-t from-black/45 via-transparent to-black/10" aria-hidden="true" />
+      {/* the shade the renderer draws behind the punchline (Settings › Effects), or the old light vignette without one */}
+      {style.shade > 0 ? (
+        // like the renderer: the picture stays untouched behind the words, then fades to black at the bottom edge
+        <div className="absolute inset-x-0 bottom-0 h-[16%]" style={{ background: `linear-gradient(to top, rgb(0 0 0 / ${style.shade}) 0%, rgb(0 0 0 / ${style.shade * 0.92}) 15%, rgb(0 0 0 / ${style.shade * 0.55}) 50%, transparent 100%)` }} aria-hidden="true" />
+      ) : (
+        <div className="absolute inset-0 bg-gradient-to-t from-black/45 via-transparent to-black/10" aria-hidden="true" />
+      )}
       {lines.length > 0 ? (
         <div
           className={cn('absolute inset-x-0 px-[5%] text-center', place)}
@@ -105,9 +116,10 @@ export default function PunchlinePreview({ image, text, style: given, englishFon
             fontWeight: weight,
             fontSize: cq(style.size),
             lineHeight: style.lineHeight,
-            WebkitTextStroke: style.stroke ? `${cq(style.strokeWidth * 2)} ${style.stroke}` : undefined,
+            letterSpacing: style.letterSpacing ? cq(style.letterSpacing) : undefined,
+            WebkitTextStroke: style.stroke ? `${cq(style.strokeWidth)} ${style.stroke}` : undefined,
             paintOrder: 'stroke fill',
-            textShadow: `0 0 ${cq(style.shadowBlur || 13)} rgb(0 0 0 / 1)`
+            textShadow: `${cq(style.shadowX || 0)} ${cq(style.shadowY || 0)} ${cq(style.shadowBlur ?? 13)} rgb(0 0 0 / 0.9)`
           }}
           aria-hidden="true"
         >
@@ -116,7 +128,7 @@ export default function PunchlinePreview({ image, text, style: given, englishFon
               key={i}
               style={{
                 color: i === 0 ? style.highlight : style.fill,
-                fontSize: lines.length === 2 && i === 0 ? '0.74em' : '1em'
+                fontSize: lines.length === 2 && i === 0 ? `${style.setupScale || 0.74}em` : '1em'
               }}
             >
               {l}

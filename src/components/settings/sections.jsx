@@ -131,6 +131,17 @@ export function EffectsSection(props) {
       <Group title="Highlight" description={`Colours: ${HIGHLIGHT_RULE[role]}`}>
         <Toggle label="Highlight on" checked={fx.highlight.enabled} defaultValue={getAt(props.defaults, [...e, 'highlight', 'enabled'])} onChange={v => set([...e, 'highlight', 'enabled'], v)} />
         <ColorField label="Highlight colour" {...bind([...e, 'highlight', 'color'])} disabled={!fx.highlight.enabled} />
+        {(role === 'heading' || role === 'supporting') && (
+          <Segmented
+            label="Which lines"
+            {...bind([...e, 'highlight', 'pattern'])}
+            options={[
+              { value: 'first', label: 'First line', hint: 'Yellow, white, white' },
+              { value: 'alternate', label: 'Every other line', hint: 'Yellow, white, yellow' }
+            ]}
+            columns="grid-cols-2"
+          />
+        )}
       </Group>
       <Group title="Outline (stroke)">
         <Toggle label="Outline on" checked={fx.stroke.enabled} defaultValue={getAt(props.defaults, [...e, 'stroke', 'enabled'])} onChange={v => set([...e, 'stroke', 'enabled'], v)} />
@@ -151,6 +162,19 @@ export function EffectsSection(props) {
           <NumberField label="Offset Y" {...bind([...e, 'shadow', 'offsetY'])} disabled={!fx.shadow.enabled} />
         </div>
       </Group>
+      {(role === 'supporting' || role === 'punchline') && fx.shade && (
+        <Group
+          title={role === 'punchline' ? 'Fade at the bottom' : 'Shade behind the text'}
+          description={
+            role === 'punchline'
+              ? 'The picture fades to black at its bottom edge, starting low behind the last line of the punchline. Darkness is how black the very bottom gets.'
+              : 'A soft dark fade behind the words, from above them to the bottom of the picture. Keeps them readable on bright pictures without a hard box.'
+          }
+        >
+          <Toggle label="Shade on" checked={fx.shade.enabled} defaultValue={getAt(props.defaults, [...e, 'shade', 'enabled'])} onChange={v => set([...e, 'shade', 'enabled'], v)} />
+          <NumberField label="Darkness" {...bind([...e, 'shade', 'opacity'])} format={pct} disabled={!fx.shade.enabled} />
+        </Group>
+      )}
     </div>
   );
 }
@@ -197,6 +221,7 @@ export function CanvasSection(props) {
         <div className="grid-fit gap-5">
           <NumberField label="Punchline area" description="Share of the reaction image reserved for the punchline." {...bind(['canvas', 'punchlineRatio'])} format={pct} />
           <NumberField label="Maximum punchline area" description="A long punchline may grow its area up to this share." {...bind(['canvas', 'punchlineMaxGrowRatio'])} format={pct} />
+          <NumberField label="Setup line size" description="In a two-line punchline, the yellow first line's size compared with the white second line." {...bind(['canvas', 'punchlineSetupScale'])} format={pct} />
         </div>
       </Group>
       <Group title="Spacing">
@@ -238,6 +263,13 @@ export function ImageSection(props) {
           checked={bind(['imageProcessing', 'useFocalPoint']).value}
           defaultValue={bind(['imageProcessing', 'useFocalPoint']).defaultValue}
           onChange={bind(['imageProcessing', 'useFocalPoint']).onChange}
+        />
+        <Toggle
+          label="Trim black and white bars"
+          description="Cut away movie letterbox bars and screenshot borders before a picture is placed, so they never show as bands between the panels."
+          checked={bind(['imageProcessing', 'trimBorders']).value}
+          defaultValue={bind(['imageProcessing', 'trimBorders']).defaultValue}
+          onChange={bind(['imageProcessing', 'trimBorders']).onChange}
         />
       </Group>
       <Group title="Saved files" description="Every meme is saved as PNG and JPEG.">

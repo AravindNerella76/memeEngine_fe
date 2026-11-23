@@ -158,9 +158,9 @@ export const SECTION_INFO = {
 
 /** What the yellow highlight colours, per role (mirrors the renderer's rules). */
 export const HIGHLIGHT_RULE = {
-  heading: 'The first line of the heading.',
+  heading: 'The first line of the heading (or every other line, below).',
   labels: 'The first line in comparison memes, and lines with numbers (e.g. "931 CRORES").',
-  supporting: 'The first line, attribution lines starting with "-", and every other bullet point.',
+  supporting: 'The first line (or every other line, below), attribution lines starting with "-", and every other bullet point.',
   punchline: 'The first line of the punchline.',
   caption: 'The whole caption.'
 };
